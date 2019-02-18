@@ -72,7 +72,7 @@ def train():
                 accumulated_grads.append(grads)
                 accumulated_step += 1
             else:
-                grads = zip(*accumulated_grads)
+                grads = list(zip(*accumulated_grads))
                 grads = [tf.add_n(g) for g in grads]
                 optimizer.apply_gradients(
                     zip(grads, trainable_vars),
