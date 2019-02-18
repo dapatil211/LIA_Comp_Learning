@@ -84,6 +84,7 @@ class CPG(object):
             num_params = shape.num_elements()
             params = self._compute_params(getter, num_params, context)
             params = tf.reshape(params, shape)
+            self.vars[name] = params
         
         return params
     
