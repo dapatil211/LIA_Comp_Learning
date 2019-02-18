@@ -77,6 +77,14 @@ def train():
                     global_step=tf.train.get_or_create_global_step())
                 accumulated_step = 0
                 accumulated_grads = []
+        if accumulated_step > 0:
+            grads = zip(*accumulated_grads)
+            grads = [tf.add_n(g) for g in grads]
+            optimizer.apply_gradients(
+                zip(grads, trainable_vars),
+                global_step=tf.train.get_or_create_global_step())
+            accumulated_step = 0
+            accumulated_grads = []
         for image, label, desc in val_dataset:
             context = parser.parse_descs(desc)
             predictions, loss = model_fn(image, label, context)
