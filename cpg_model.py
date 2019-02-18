@@ -40,6 +40,7 @@ def input_fn(folder):
 
 def train():
     EPOCHS = 2
+    effective_batch_size = 32
     optimizer = tf.train.AdamOptimizer(0.001)
     global_container = tfe.EagerVariableStore()
     with global_container.as_default():
@@ -52,6 +53,8 @@ def train():
         tc_val = 0.0
         loss_train = 0.0
         loss_val = 0.0
+        accumulated_step = 0
+        accumulated_grads = []
         print('Start epoch %d' % epoch)
         for image, label, desc in train_dataset:
             with tf.GradientTape() as tape:
@@ -63,11 +66,17 @@ def train():
                 loss_train += tf.reduce_sum(loss)
             trainable_vars = global_container.trainable_variables()
             grads = tape.gradient(loss, trainable_vars)
-            # print(grads)
-            # print(len(trainable_vars))
-            optimizer.apply_gradients(
-                zip(grads, trainable_vars),
-                global_step=tf.train.get_or_create_global_step())
+            if accumulated_step < effective_batch_size:
+                accumulated_grads.append(grads)
+                accumulated_step += 1
+            else:
+                grads = zip(*accumulated_grads)
+                grads = [tf.add_n(g) for g in grads]
+                optimizer.apply_gradients(
+                    zip(grads, trainable_vars),
+                    global_step=tf.train.get_or_create_global_step())
+                accumulated_step = 0
+                accumulated_grads = []
         for image, label, desc in val_dataset:
             context = parser.parse_descs(desc)
             predictions, loss = model_fn(image, label, context)
