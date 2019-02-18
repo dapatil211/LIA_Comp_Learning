@@ -35,9 +35,10 @@ class CPGInitializer:
             )(shape, dtype)
             param_generator = getter(
                 name + '_generator', [context.shape[-1].value, num_params],
-                initializer=init_fn)
-            self.generation_params[variable_name] = shape, param_generator
-        param_shape, param_generator = self.generation_params[variable_name]
+                initializer=init_fn,
+                use_resource=True)
+            self.generation_params[name] = shape, param_generator
+        param_shape, param_generator = self.generation_params[name]
         print(name)
         print(context)
         if shape != param_shape:
@@ -47,8 +48,8 @@ class CPGInitializer:
             context = tf.expand_dims(context, 0)
         return getter(
             name,
-            shape,
-            initializer=tf.reshape(tf.matmul(context, param_generator), shape))
+            initializer=tf.reshape(tf.matmul(context, param_generator), shape),
+            use_resource=True)
 
     def get_config():
         return {}
