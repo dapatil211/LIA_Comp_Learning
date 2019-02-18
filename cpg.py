@@ -80,7 +80,7 @@ class CPG(object):
                              'with tf.get_variable(). Did you mean to set '
                              'reuse=tf.AUTO_REUSE in VarScope?' % name)
         
-        with tf.variable_scope('cpg/' + name):
+        with tf.variable_scope('cpg/' + name, use_resource=True):
             num_params = shape.num_elements()
             params = self._compute_params(getter, num_params, context)
             params = tf.reshape(params, shape)
@@ -98,7 +98,7 @@ class LinearCPG(CPG):
         super(LinearCPG, self).__init__()
     
     def _compute_params(self, getter, num_params, context):
-        with tf.variable_scope('compute_params'):
+        with tf.variable_scope('compute_params', use_resource=True):
             scope = tf.get_variable_scope().name
             weights_name = 'weights'
             weights_name = weights_name + '/' + scope if scope else weights_name
