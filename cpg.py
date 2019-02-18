@@ -41,7 +41,7 @@ class CPG(object):
                           validate_shape, use_resource, constraint, 
                           **kwargs)
         
-        dtype = tf.dtypes.as_dtype(dtype)
+        dtype = tf.as_dtype(dtype)
         shape = tf.TensorShape(shape)
         
         scope = tf.get_variable_scope().name
