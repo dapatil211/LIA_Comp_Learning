@@ -32,7 +32,7 @@ def input_fn(folder):
     num_examples = inputs.shape[0]
     dataset = tf.data.Dataset.from_tensor_slices((inputs, labels, descs))
     dataset = dataset.cache()
-    dataset = dataset.shuffle(int(num_examples * .7))
+    dataset = dataset.shuffle(num_examples)
     dataset = dataset.batch(1)
     # dataset = dataset.map(parse_context)
     return dataset, num_examples
@@ -68,7 +68,7 @@ def train():
             optimizer.apply_gradients(
                 zip(grads, trainable_vars),
                 global_step=tf.train.get_or_create_global_step())
-        for image, label, desc in train_dataset:
+        for image, label, desc in val_dataset:
             context = parser.parse_descs(desc)
             predictions, loss = model_fn(image, label, context)
             tc_val += tf.reduce_sum(
