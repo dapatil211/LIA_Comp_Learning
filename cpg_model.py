@@ -15,7 +15,8 @@ tfe = tf.contrib.eager
 
 
 def model_fn(images, labels, contexts):
-    with tf.variable_scope('mode', custom_getter=cpg.getter(contexts)):
+    with tf.variable_scope('mode', use_resource=True, 
+                           custom_getter=cpg.getter(contexts)):
         x = tf.layers.conv2d(images, 64, 3, activation=tf.nn.relu, name='conv1')
         x = tf.layers.conv2d(x, 64, 3, activation=tf.nn.relu, name='conv2')
         x = tf.reduce_mean(x, [1, 2])
@@ -43,8 +44,9 @@ def train():
     effective_batch_size = 32
     optimizer = tf.train.AdamOptimizer(0.001)
     global_container = tfe.EagerVariableStore()
-    with global_container.as_default():
-        parser = ContextParser()
+    with tf.variable_scope(use_resource=True):
+        with global_container.as_default():
+            parser = ContextParser()
 
     for epoch in range(EPOCHS):
         train_dataset, num_train = input_fn('complearn/train')
