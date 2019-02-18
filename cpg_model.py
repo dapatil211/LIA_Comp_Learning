@@ -18,9 +18,9 @@ def model_fn(images, labels, contexts):
     with tf.variable_scope('mode', use_resource=True, 
                            custom_getter=cpg.getter(contexts)):
         x = tf.layers.conv2d(images, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
-        x = tf.layers.max_pooling2d(x, 5, 3, name='pool1')
+        x = tf.layers.max_pooling2d(x, 3, 1, name='pool1')
         x = tf.layers.conv2d(x, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
-        x = tf.layers.max_pooling2d(x, 5, 2, name='pool1')
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
         x = tf.layers.flatten(x, 'flatten')
         x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
         logits = tf.layers.dense(x, 2, activation=tf.nn.leaky_relu, name='dense2')
@@ -33,9 +33,9 @@ def model_fn(images, labels, contexts):
 def input_fn(folder):
     inputs, labels, descs = load_dil(folder)
     num_examples = inputs.shape[0]
-    num_examples = 10
+    # num_examples = 10
     dataset = tf.data.Dataset.from_tensor_slices((inputs, labels, descs))
-    dataset = dataset.take(10)
+    # dataset = dataset.take(10)
     dataset = dataset.cache()
     dataset = dataset.shuffle(num_examples)
     dataset = dataset.batch(1)
@@ -46,6 +46,7 @@ def input_fn(folder):
 def train():
     EPOCHS = 100
     effective_batch_size = 512
+    log_steps = 100
     optimizer = tf.train.AdamOptimizer(0.01)
     global_container = tfe.EagerVariableStore()
     with tf.variable_scope('context_parser', use_resource=True):
@@ -57,20 +58,23 @@ def train():
         val_dataset, num_val = input_fn('complearn/val')
         tc_train = 0.0
         tc_val = 0.0
-        loss_train = 0.0
         loss_val = 0.0
+        loss_train = 0.0
+        num_train = 0
+        step = 0
         accumulated_step = 0
         accumulated_grads = []
         print('Start epoch %d' % epoch)
         for image, label, desc in train_dataset:
+            num_train += image.shape[0].value
             with tf.GradientTape() as tape:
                 with global_container.as_default():
                     context = parser.parse_descs(desc)
                     predictions, loss = model_fn(image, label, context)
-                tc_train += tf.reduce_sum(
-                    tf.cast(tf.equal(predictions, label), tf.float32))
+                tc_train += float(tf.reduce_sum(
+                    tf.cast(tf.equal(predictions, label), tf.float32)))
                 loss = tf.reduce_sum(loss)
-                loss_train += loss
+                loss_train += float(loss)
             trainable_vars = global_container.trainable_variables()
             grads = tape.gradient(loss, trainable_vars)
             if accumulated_step < effective_batch_size:
@@ -85,6 +89,13 @@ def train():
                     global_step=tf.train.get_or_create_global_step())
                 accumulated_step = 0
                 accumulated_grads = []
+            if step % log_steps == 0:
+                print('Step %d\ttrain loss:%f\ttrain accuracy:%f'
+                      % (step, loss_train / num_train, tc_train / num_train))
+                loss_train = 0.0
+                tc_train = 0.0
+                num_train = 0
+            step += 1
         if accumulated_step > 0:
             grads = zip(*accumulated_grads)
             grads = [tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) 
@@ -101,10 +112,8 @@ def train():
                 tf.cast(tf.equal(predictions, label), tf.float32))
             loss_val += tf.reduce_sum(loss)
 
-        print(
-            'Epoch %d\ttrain loss:%f\tval loss:%f\ttrain accuracy:%f\tval accuracy:%f\t'
-            % (epoch, loss_train / num_train, loss_val / num_val,
-               tc_train / num_train, tc_val / num_val))
+        print('Epoch %d\tval loss:%f\tval accuracy:%f\t'
+              % (epoch, loss_val / num_val, tc_val / num_val))
 
 
 if __name__ == '__main__':
