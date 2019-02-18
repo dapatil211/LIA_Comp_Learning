@@ -58,8 +58,8 @@ def train():
             parser = ContextParser()
 
     for epoch in range(EPOCHS):
-        train_dataset, num_train = input_fn('complearn/train')
-        val_dataset, num_val = input_fn('complearn/val')
+        train_dataset, num_train = input_fn('complearn/train', is_train=True)
+        val_dataset, num_val = input_fn('complearn/val', is_train=False)
         tc_train = 0.0
         loss_train = 0.0
         num_train = 0
