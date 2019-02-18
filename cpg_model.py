@@ -44,7 +44,7 @@ def train():
     effective_batch_size = 32
     optimizer = tf.train.AdamOptimizer(0.001)
     global_container = tfe.EagerVariableStore()
-    with tf.variable_scope(use_resource=True):
+    with tf.variable_scope('context_parser', use_resource=True):
         with global_container.as_default():
             parser = ContextParser()
 
