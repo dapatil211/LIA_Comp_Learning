@@ -17,9 +17,9 @@ tfe = tf.contrib.eager
 def model_fn(images, labels, contexts):
     with tf.variable_scope('mode', use_resource=True, 
                            custom_getter=cpg.getter(contexts)):
-        x = tf.layers.conv2d(images, 64, 3, activation=tf.nn.leaky_relu, name='conv1')
-        x = tf.layers.max_pooling2d(x, 3, 1, name='pool1')
-        x = tf.layers.conv2d(x, 64, 3, activation=tf.nn.leaky_relu, name='conv2')
+        x = tf.layers.conv2d(images, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
+        x = tf.layers.max_pooling2d(x, 5, 3, name='pool1')
+        x = tf.layers.conv2d(x, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
         x = tf.layers.max_pooling2d(x, 5, 2, name='pool1')
         x = tf.layers.flatten(x, 'flatten')
         x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
@@ -33,9 +33,9 @@ def model_fn(images, labels, contexts):
 def input_fn(folder):
     inputs, labels, descs = load_dil(folder)
     num_examples = inputs.shape[0]
-    # num_examples = 10
+    num_examples = 10
     dataset = tf.data.Dataset.from_tensor_slices((inputs, labels, descs))
-    # dataset = dataset.take(10)
+    dataset = dataset.take(10)
     dataset = dataset.cache()
     dataset = dataset.shuffle(num_examples)
     dataset = dataset.batch(1)
