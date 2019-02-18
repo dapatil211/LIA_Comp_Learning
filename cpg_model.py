@@ -23,22 +23,25 @@ def model_fn(images, labels, contexts):
         x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
         x = tf.layers.flatten(x, 'flatten')
         x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
-        logits = tf.layers.dense(x, 2, activation=tf.nn.leaky_relu, name='dense2')
+        logits = tf.layers.dense(x, 2, name='dense2')
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits)
     predictions = tf.argmax(logits, axis=1, output_type=tf.int32)
     return predictions, loss
 
 
-def input_fn(folder):
+def input_fn(folder, is_train):
     inputs, labels, descs = load_dil(folder)
     num_examples = inputs.shape[0]
     # num_examples = 10
     dataset = tf.data.Dataset.from_tensor_slices((inputs, labels, descs))
-    # dataset = dataset.take(10)
-    dataset = dataset.cache()
-    dataset = dataset.shuffle(num_examples)
+    # dataset = dataset.take(100)
+    if is_train:
+        dataset = dataset.cache()
+        dataset = dataset.repeat()
+        dataset = dataset.shuffle(num_examples)
     dataset = dataset.batch(1)
+    dataset = dataset.prefetch(1000)
     # dataset = dataset.map(parse_context)
     return dataset, num_examples
 
@@ -47,6 +50,7 @@ def train():
     EPOCHS = 100
     effective_batch_size = 32
     log_steps = 10
+    val_steps = 1000
     optimizer = tf.train.AdamOptimizer(0.001)
     global_container = tfe.EagerVariableStore()
     with tf.variable_scope('context_parser', use_resource=True):
@@ -57,12 +61,11 @@ def train():
         train_dataset, num_train = input_fn('complearn/train')
         val_dataset, num_val = input_fn('complearn/val')
         tc_train = 0.0
-        tc_val = 0.0
-        loss_val = 0.0
         loss_train = 0.0
         num_train = 0
         step = 0
         last_log_step = -1
+        last_val_step = -1
         accumulated_step = 0
         accumulated_grads = []
         print('Start epoch %d' % epoch)
@@ -98,25 +101,18 @@ def train():
                 loss_train = 0.0
                 tc_train = 0.0
                 num_train = 0
+            if last_val_step != log_step and log_step % val_steps == 0:
+                tc_val = 0.0
+                loss_val = 0.0
+                for image, label, desc in val_dataset:
+                    context = parser.parse_descs(desc)
+                    predictions, loss = model_fn(image, label, context)
+                    tc_val += float(tf.reduce_sum(
+                        tf.cast(tf.equal(predictions, label), tf.float32)))
+                    loss_val += float(tf.reduce_sum(loss))
+                print('Step %d\tval loss:%f\tval accuracy:%f'
+                      % (log_step, loss_val / num_val, tc_val / num_val))
             step += 1
-        if accumulated_step > 0:
-            grads = zip(*accumulated_grads)
-            grads = [tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) 
-                        for g in grads]
-            optimizer.apply_gradients(
-                zip(grads, trainable_vars),
-                global_step=tf.train.get_or_create_global_step())
-            accumulated_step = 0
-            accumulated_grads = []
-        for image, label, desc in val_dataset:
-            context = parser.parse_descs(desc)
-            predictions, loss = model_fn(image, label, context)
-            tc_val += tf.reduce_sum(
-                tf.cast(tf.equal(predictions, label), tf.float32))
-            loss_val += tf.reduce_sum(loss)
-
-        print('Epoch %d\tval loss:%f\tval accuracy:%f\t'
-              % (epoch, loss_val / num_val, tc_val / num_val))
 
 
 if __name__ == '__main__':
