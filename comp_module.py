@@ -40,8 +40,9 @@ class ContextParser:
         return tf.expand_dims(tf.nn.embedding_lookup(self.embeddings, index), 0)
 
     def comp_fn(self, c1, c2):
-        x = self.dense1(tf.concat([c1, c2], 1))
-        return self.dense2(x)
+        c1 = self.dense1(c1)
+        c2 = self.dense1(c2)
+        return self.dense2(tf.reduce_sum(tf.stack([c1, c2], axis=0), axis=0))
 
     def parse_single_desc(self, desc):
         if desc[0].numpy() == -1:
