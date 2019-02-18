@@ -17,11 +17,13 @@ tfe = tf.contrib.eager
 def model_fn(images, labels, contexts):
     with tf.variable_scope('mode', use_resource=True, 
                            custom_getter=cpg.getter(contexts)):
-        x = tf.layers.conv2d(images, 64, 3, activation=tf.nn.relu, name='conv1')
-        x = tf.layers.conv2d(x, 64, 3, activation=tf.nn.relu, name='conv2')
-        x = tf.reduce_mean(x, [1, 2])
-        x = tf.layers.dense(x, 32, activation=tf.nn.relu, name='dense1')
-        logits = tf.layers.dense(x, 2, activation=tf.nn.relu, name='dense2')
+        x = tf.layers.conv2d(images, 64, 3, activation=tf.nn.leaky_relu, name='conv1')
+        x = tf.layers.max_pooling2d(x, 3, 1, name='pool1')
+        x = tf.layers.conv2d(x, 64, 3, activation=tf.nn.leaky_relu, name='conv2')
+        x = tf.layers.max_pooling2d(x, 5, 2, name='pool1')
+        x = tf.layers.flatten(x, 'flatten')
+        x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
+        logits = tf.layers.dense(x, 2, activation=tf.nn.leaky_relu, name='dense2')
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits)
     predictions = tf.argmax(logits, axis=1, output_type=tf.int32)
@@ -31,6 +33,7 @@ def model_fn(images, labels, contexts):
 def input_fn(folder):
     inputs, labels, descs = load_dil(folder)
     num_examples = inputs.shape[0]
+    # num_examples = 10
     dataset = tf.data.Dataset.from_tensor_slices((inputs, labels, descs))
     # dataset = dataset.take(10)
     dataset = dataset.cache()
@@ -41,9 +44,9 @@ def input_fn(folder):
 
 
 def train():
-    EPOCHS = 2
-    effective_batch_size = 32
-    optimizer = tf.train.AdamOptimizer(0.001)
+    EPOCHS = 100
+    effective_batch_size = 512
+    optimizer = tf.train.AdamOptimizer(0.01)
     global_container = tfe.EagerVariableStore()
     with tf.variable_scope('context_parser', use_resource=True):
         with global_container.as_default():
@@ -66,7 +69,8 @@ def train():
                     predictions, loss = model_fn(image, label, context)
                 tc_train += tf.reduce_sum(
                     tf.cast(tf.equal(predictions, label), tf.float32))
-                loss_train += tf.reduce_sum(loss)
+                loss = tf.reduce_sum(loss)
+                loss_train += loss
             trainable_vars = global_container.trainable_variables()
             grads = tape.gradient(loss, trainable_vars)
             if accumulated_step < effective_batch_size:
