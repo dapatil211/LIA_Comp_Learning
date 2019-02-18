@@ -32,15 +32,14 @@ class CPG(object):
                 validate_shape=True,
                 use_resource=None,
                 constraint=None,
-                synchronization=tf.VariableSynchronization.AUTO,
-                aggregation=tf.VariableAggregation.NONE):
+                **kwargs):
         # If the requested variable is not trainable, just invoke the wrapped 
         # variable getter directly.
         if not trainable:
             return getter(name, shape, dtype, initializer, regularizer, reuse, 
                           trainable, collections, caching_device, 
                           validate_shape, use_resource, constraint, 
-                          synchronization, aggregation)
+                          **kwargs)
         
         dtype = tf.dtypes.as_dtype(dtype)
         shape = tf.TensorShape(shape)
