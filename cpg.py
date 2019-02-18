@@ -52,15 +52,15 @@ class CPG(object):
         with tf.variable_scope('cpg/' + name, use_resource=True):
             if name in self.vars:
                 # Here we handle the case when returning an existing variable.
-                if reuse is False:
-                    tb = self.vars[name].op.traceback[::-1]
-                    # Throw away internal TF entries and only take a few lines.
-                    tb = [x for x in tb if 'tensorflow/python' not in x[0]][:3]
-                    raise ValueError('Variable %s already exists, disallowed.'
-                                    ' Did you mean to set reuse=True or '
-                                    'reuse=tf.AUTO_REUSE in VarScope? '
-                                    'Originally defined at:\n\n%s' % (
-                                        name, ''.join(traceback.format_list(tb))))
+                # if reuse is False:
+                #     tb = self.vars[name].op.traceback[::-1]
+                #     # Throw away internal TF entries and only take a few lines.
+                #     tb = [x for x in tb if 'tensorflow/python' not in x[0]][:3]
+                #     raise ValueError('Variable %s already exists, disallowed.'
+                #                     ' Did you mean to set reuse=True or '
+                #                     'reuse=tf.AUTO_REUSE in VarScope? '
+                #                     'Originally defined at:\n\n%s' % (
+                #                         name, ''.join(traceback.format_list(tb))))
                 
                 num_params = shape.num_elements()
                 found_vars = self.vars[name]

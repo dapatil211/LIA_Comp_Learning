@@ -32,6 +32,7 @@ def input_fn(folder):
     inputs, labels, descs = load_dil(folder)
     num_examples = inputs.shape[0]
     dataset = tf.data.Dataset.from_tensor_slices((inputs, labels, descs))
+    # dataset = dataset.take(10)
     dataset = dataset.cache()
     dataset = dataset.shuffle(num_examples)
     dataset = dataset.batch(1)
@@ -72,8 +73,9 @@ def train():
                 accumulated_grads.append(grads)
                 accumulated_step += 1
             else:
-                grads = list(zip(*accumulated_grads))
-                grads = [tf.add_n(g) for g in grads]
+                grads = zip(*accumulated_grads)
+                grads = [tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) 
+                         for g in grads]
                 optimizer.apply_gradients(
                     zip(grads, trainable_vars),
                     global_step=tf.train.get_or_create_global_step())
@@ -81,7 +83,8 @@ def train():
                 accumulated_grads = []
         if accumulated_step > 0:
             grads = zip(*accumulated_grads)
-            grads = [tf.add_n(g) for g in grads]
+            grads = [tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) 
+                        for g in grads]
             optimizer.apply_gradients(
                 zip(grads, trainable_vars),
                 global_step=tf.train.get_or_create_global_step())
