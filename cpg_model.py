@@ -45,9 +45,9 @@ def input_fn(folder):
 
 def train():
     EPOCHS = 100
-    effective_batch_size = 512
+    effective_batch_size = 32
     log_steps = 10
-    optimizer = tf.train.AdamOptimizer(0.01)
+    optimizer = tf.train.AdamOptimizer(0.001)
     global_container = tfe.EagerVariableStore()
     with tf.variable_scope('context_parser', use_resource=True):
         with global_container.as_default():
@@ -62,6 +62,7 @@ def train():
         loss_train = 0.0
         num_train = 0
         step = 0
+        last_log_step = -1
         accumulated_step = 0
         accumulated_grads = []
         print('Start epoch %d' % epoch)
@@ -89,9 +90,11 @@ def train():
                     global_step=tf.train.get_or_create_global_step())
                 accumulated_step = 0
                 accumulated_grads = []
-            if step == 0 or (step // effective_batch_size + 1) % log_steps == 0:
+            log_step = step // effective_batch_size
+            if last_log_step != log_step and log_step % log_steps == 0:
                 print('Step %d\ttrain loss:%f\ttrain accuracy:%f'
-                      % (step, loss_train / num_train, tc_train / num_train))
+                      % (log_step, loss_train / num_train, tc_train / num_train))
+                last_log_step = log_step
                 loss_train = 0.0
                 tc_train = 0.0
                 num_train = 0
