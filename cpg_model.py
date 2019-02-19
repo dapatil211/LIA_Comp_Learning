@@ -15,11 +15,13 @@ tfe = tf.contrib.eager
 
 
 def model_fn(images, labels, contexts):
-    with tf.variable_scope('mode', use_resource=True, 
-                           custom_getter=cpg.getter(contexts)):
-        x = tf.layers.conv2d(images, 32, 5, (3, 3), activation=tf.nn.selu, name='conv1')
+    with tf.variable_scope(
+            'model', use_resource=True, custom_getter=cpg.getter(contexts)):
+        x = tf.layers.conv2d(
+            images, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
         x = tf.layers.max_pooling2d(x, 3, 1, name='pool1')
-        x = tf.layers.conv2d(x, 16, 3, activation=tf.nn.selu, name='conv2')
+        x = tf.layers.conv2d(
+            x, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
         x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
         x = tf.layers.flatten(x, 'flatten')
         x = tf.layers.dense(x, 32, activation=tf.nn.selu, name='dense1')
@@ -72,8 +74,9 @@ def train():
             with global_container.as_default():
                 context = parser.parse_descs(desc)
                 predictions, loss = model_fn(image, label, context)
-            tc_train += float(tf.reduce_sum(
-                tf.cast(tf.equal(predictions, label), tf.float32)))
+            tc_train += float(
+                tf.reduce_sum(
+                    tf.cast(tf.equal(predictions, label), tf.float32)))
             loss = tf.reduce_sum(loss)
             loss_train += float(loss)
         trainable_vars = global_container.trainable_variables()
@@ -83,8 +86,9 @@ def train():
             accumulated_step += 1
         else:
             grads = zip(*accumulated_grads)
-            grads = [tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) 
-                        for g in grads]
+            grads = [
+                tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) for g in grads
+            ]
             optimizer.apply_gradients(
                 zip(grads, trainable_vars),
                 global_step=tf.train.get_or_create_global_step())
@@ -92,8 +96,8 @@ def train():
             accumulated_grads = []
         log_step = step // effective_batch_size
         if last_log_step != log_step and log_step % log_steps == 0:
-            print('Step %d\ttrain loss:%f\ttrain accuracy:%f'
-                    % (log_step, loss_train / num_train, tc_train / num_train))
+            print('Step %d\ttrain loss:%f\ttrain accuracy:%f' %
+                  (log_step, loss_train / num_train, tc_train / num_train))
             last_log_step = log_step
             loss_train = 0.0
             tc_train = 0.0
@@ -104,11 +108,12 @@ def train():
             for image, label, desc in val_dataset:
                 context = parser.parse_descs(desc)
                 predictions, loss = model_fn(image, label, context)
-                tc_val += float(tf.reduce_sum(
-                    tf.cast(tf.equal(predictions, label), tf.float32)))
+                tc_val += float(
+                    tf.reduce_sum(
+                        tf.cast(tf.equal(predictions, label), tf.float32)))
                 loss_val += float(tf.reduce_sum(loss))
-            print('Step %d\tval loss:%f\tval accuracy:%f'
-                    % (log_step, loss_val / num_val, tc_val / num_val))
+            print('Step %d\tval loss:%f\tval accuracy:%f' %
+                  (log_step, loss_val / num_val, tc_val / num_val))
             last_val_step = log_step
         step += 1
 
