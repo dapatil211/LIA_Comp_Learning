@@ -41,7 +41,7 @@ class ContextParser:
             'semicircle', 'ellipse', 'any']
         self.colors = [
             'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'gray', 'any']
-        self.embeddings = tf.get_variable('embeddings', [17, 32])
+        self.embeddings = tf.get_variable('embeddings', [17, 8])
         self.dense1 = tf.layers.Dense(16)
         self.dense2 = tf.layers.Dense(8)
         self.apply_dense1 = tf.layers.Dense(16)
@@ -53,12 +53,12 @@ class ContextParser:
     def comp_fn(self, c1, c2):
         c1 = self.dense1(c1)
         c2 = self.dense1(c2)
-        return self.dense2(tf.nn.leaky_relu(
+        return self.dense2(tf.nn.selu(
             tf.reduce_sum(tf.stack([c1, c2], axis=0), axis=0)))
     
     def apply_fn(self, adj, base):
         concat = tf.concat([adj, base], axis=-1)
-        return self.apply_dense2(tf.nn.leaky_relu(
+        return self.apply_dense2(tf.nn.selu(
             self.apply_dense1(concat)))
 
     def parse_single_desc(self, desc):

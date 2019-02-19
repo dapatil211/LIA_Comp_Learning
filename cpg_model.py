@@ -2,11 +2,11 @@ from __future__ import absolute_import, division, print_function
 
 import tensorflow as tf
 
-from cpg import LowRankLinearCPG
-from data_loader import load_dil
 from comp_module import ContextParser
+from cpg import LinearCPG
+from data_loader import load_dil
 
-cpg = LowRankLinearCPG(rank=4)
+cpg = LinearCPG()
 tf.enable_eager_execution()
 tfe = tf.contrib.eager
 
@@ -17,12 +17,12 @@ tfe = tf.contrib.eager
 def model_fn(images, labels, contexts):
     with tf.variable_scope('mode', use_resource=True, 
                            custom_getter=cpg.getter(contexts)):
-        x = tf.layers.conv2d(images, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
+        x = tf.layers.conv2d(images, 32, 5, (3, 3), activation=tf.nn.selu, name='conv1')
         x = tf.layers.max_pooling2d(x, 3, 1, name='pool1')
-        x = tf.layers.conv2d(x, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
+        x = tf.layers.conv2d(x, 16, 3, activation=tf.nn.selu, name='conv2')
         x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
         x = tf.layers.flatten(x, 'flatten')
-        x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
+        x = tf.layers.dense(x, 32, activation=tf.nn.selu, name='dense1')
         logits = tf.layers.dense(x, 2, name='dense2')
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits)
@@ -50,7 +50,7 @@ def train():
     effective_batch_size = 32
     log_steps = 10
     val_steps = 1000
-    optimizer = tf.train.AdamOptimizer(0.01)
+    optimizer = tf.train.AdamOptimizer(0.001)
     global_container = tfe.EagerVariableStore()
     with tf.variable_scope('context_parser', use_resource=True):
         with global_container.as_default():
