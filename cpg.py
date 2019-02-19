@@ -119,3 +119,35 @@ class LinearCPG(CPG):
                                 initializer=tf.glorot_uniform_initializer(),
                                 use_resource=True)
             return tf.matmul(context, weights), {weights_name: weights}
+
+
+class LowRankLinearCPG(CPG):
+    def __init__(self, rank):
+        super(LowRankLinearCPG, self).__init__()
+        self.rank = rank
+    
+    def _compute_params(self, getter, num_params, context, compute_vars=None):
+        with tf.variable_scope('compute_params', use_resource=True):
+            scope = tf.get_variable_scope().name
+            weights_1_name = 'weights_1'
+            weights_1_name = weights_1_name + '/' + scope if scope else weights_1_name
+            weights_2_name = 'weights_2'
+            weights_2_name = weights_2_name + '/' + scope if scope else weights_2_name
+            if compute_vars is not None and weights_1_name in compute_vars:
+                weights_1 = compute_vars[weights_1_name]
+            else:
+                weights_1 = getter(name=weights_1_name, 
+                                   shape=[context.shape[-1], self.rank],
+                                   dtype=context.dtype, 
+                                   initializer=tf.glorot_uniform_initializer(),
+                                   use_resource=True)
+            if compute_vars is not None and weights_2_name in compute_vars:
+                weights_2 = compute_vars[weights_2_name]
+            else:
+                weights_2 = getter(name=weights_2_name, 
+                                   shape=[self.rank, num_params],
+                                   dtype=context.dtype, 
+                                   initializer=tf.glorot_uniform_initializer(),
+                                   use_resource=True)
+            return tf.matmul(tf.matmul(context, weights_1), weights_2), \
+                {weights_1_name: weights_1, weights_2_name: weights_2}
