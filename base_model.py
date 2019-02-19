@@ -7,7 +7,7 @@ import argparse
 
 def train(model_name):
     BATCH_SIZE = 32
-    EPOCHS = 100
+    EPOCHS = 1000
     SAVE_EVERY = 5
     LOG_EVERY = 10
 
@@ -100,7 +100,7 @@ def train(model_name):
             [acc_train, loss_train, acc_val, loss_val] = \
                 sess.run([train_accuracy, train_epoch_loss, eval_accuracy, eval_epoch_loss])
             print(
-                'Epoch %d\tTraining Loss: %f\tTraining Accuracy: %f\tValidation Loss: %f\Validation Accuracy: %f'
+                'Epoch %d\tTraining Loss: %f\tTraining Accuracy: %f\tValidation Loss: %f\tValidation Accuracy: %f'
                 % (epoch, loss_train, acc_train, loss_val, acc_val))
             if epoch % SAVE_EVERY:
                 save_path = saver.save(sess, "./models/model.ckpt")
