@@ -153,6 +153,7 @@ def train_graph(name='comp'):
                     except:
                         print('Step %d\tval loss:%f\tval accuracy:%f' %
                               (step, loss_val / num_val, tc_val / num_val))
+                        break
 
 
 def train(name='comp'):
