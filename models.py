@@ -3,11 +3,12 @@ import tensorflow_hub as hub
 tfd = tf.contrib.distributions
 
 IMAGE_EMBED_SIZE = 1080
+TEXT_EMBED_SIZE = 1024
 
 
 def elmo(sentences):
     elmo = hub.Module("https://tfhub.dev/google/elmo/2", trainable=True)
-    embeddings = elmo(sentences, signature="default", as_dict=True)["elmo"]
+    embeddings = elmo(sentences, signature="default", as_dict=True)["default"]
     return embeddings
 
 
@@ -41,22 +42,54 @@ with image embedding.
 """
 
 
-def baseline_model_1(desc, lens, examples, inputs, labels, batch_size=32):
+def baseline_model_1(desc,
+                     lens,
+                     examples,
+                     inputs,
+                     labels,
+                     batch_size=32,
+                     train=True):
     embeddings = elmo(desc)
-    rnn_cell = tf.nn.rnn_cell.BasicRNNCell(128)
-    initial_state = rnn_cell.zero_state(tf.shape(lens), dtype=tf.float32)
-    outputs, state = tf.nn.dynamic_rnn(
-        rnn_cell,
-        embeddings,
-        sequence_length=lens,
-        initial_state=initial_state,
-        dtype=tf.float32)
+    text_embedding = tf.layers.dense(
+        embeddings, 64, activation=tf.nn.leaky_relu, name='text_dense1')
+    text_embedding = tf.layers.dense(
+        text_embedding, 64, activation=tf.nn.leaky_relu, name='text_dense2')
+    text_embedding = tf.layers.dense(
+        text_embedding, 32, activation=tf.nn.leaky_relu, name='text_dense3')
+
+    image_embedding = tf.layers.conv2d(
+        inputs, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
+    image_embedding = tf.layers.max_pooling2d(
+        image_embedding, 3, 1, name='pool1')
+    image_embedding = tf.layers.conv2d(
+        image_embedding, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
+    image_embedding = tf.layers.max_pooling2d(
+        image_embedding, 3, 2, name='pool2')
+    image_embedding = tf.layers.flatten(image_embedding, 'flatten')
+
+    image_embedding = tf.layers.dense(
+        image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense1')
+    image_embedding = tf.layers.dense(
+        image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense2')
+    # image_embedding = tf.layers.dense(
+    #     image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense3')
+    # rnn_cell = tf.nn.rnn_cell.BasicRNNCell(128)
+    # initial_state = rnn_cell.zero_state(tf.shape(lens), dtype=tf.float32)
+    # outputs, state = tf.nn.dynamic_rnn(
+    #     rnn_cell,
+    #     embeddings,
+    #     sequence_length=lens,
+    #     initial_state=initial_state,
+    #     dtype=tf.float32)
 
     # example_code = examples_encoder(examples)
     # concept_rep = tf.concat([inputs, example_code, outputs[:, -1, :]], 0)
-    concept_rep = tf.concat([inputs, outputs[:, -1, :]], 1)
-    x = tf.layers.dense(
-        concept_rep, 32, activation=tf.nn.leaky_relu, name='dense1')
+    x = tf.concat([text_embedding, image_embedding], 1)
+    # if train:
+    #     concept_rep = tf.nn.dropout(concept_rep, .5)
+    # x = tf.layers.dense(
+    #     concept_rep, 32, activation=tf.nn.leaky_relu, name='dense1')
+    x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
     logits = tf.layers.dense(x, 2, name='dense2')
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits)

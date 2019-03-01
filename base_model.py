@@ -15,7 +15,7 @@ def train(model_name):
     desc_placeholder = tf.placeholder(tf.string, desc_shape)
     len_placeholder = tf.placeholder(tf.int32, desc_shape)
     examples_placeholder = tf.placeholder(tf.float32, [None, 4, 1280])
-    inputs_placeholder = tf.placeholder(tf.float32, [None, 1280])
+    inputs_placeholder = tf.placeholder(tf.float32, [None, 64, 64, 3])
     labels_placeholder = tf.placeholder(tf.int32, [None])
 
     dataset = tf.data.Dataset.from_tensor_slices(
@@ -44,10 +44,10 @@ def train(model_name):
         *iterator.get_next())
     with tf.variable_scope('', reuse=True):
         eval_logits, eval_loss, eval_accuracy, eval_acc_op, eval_epoch_loss, eval_epoch_loss_op = model(
-            *eval_iterator.get_next())
+            *eval_iterator.get_next(), train=False)
     reset_metrics = tf.variables_initializer(
         [v for v in tf.local_variables() if 'metrics' in v.name])
-    optimize = tf.train.AdamOptimizer(0.001).minimize(train_loss)
+    optimize = tf.train.AdamOptimizer(0.005).minimize(train_loss)
 
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()

@@ -26,8 +26,8 @@ def load_all_data(folder, split_descs=False):
     else:
         lengths = np.array([len(desc.split(' ')) for desc in descriptions])
     examples = np.load(os.path.join(folder, 'examples_mnet.npy'))
-    inputs = np.load(os.path.join(folder, 'input_mnet.npy'))
-    labels = np.load(os.path.join(folder, 'labels.npy'))
+    inputs = np.float32(np.load(os.path.join(folder, 'inputs.npy')))
+    labels = np.int32(np.load(os.path.join(folder, 'labels.npy')))
     return descriptions, lengths, examples, inputs, labels
 
 
