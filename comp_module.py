@@ -74,12 +74,10 @@ class CompositionalParser:
 
     def parse_descs(self, descs):
         return tf.map_fn(
-            lambda x: tf.py_function(
-                tf.squeeze(
-                    AndContext(
-                        self.parse_single_desc(x[0]),
-                        self.parse_single_desc(x[1]), self.comp_fn).get_context(
-                        )), [x], [tf.float32]),
+            lambda x: tf.squeeze(
+                AndContext(
+                    self.parse_single_desc(x[0]), self.parse_single_desc(x[1]),
+                    self.comp_fn).get_context()),
             descs,
             dtype=tf.float32)
 
@@ -89,8 +87,10 @@ class BasicParser:
     def __init__(self):
         self.elmo = hub.Module(
             "https://tfhub.dev/google/elmo/2", trainable=True)
+        self.dense1 = tf.layers.Dense(8)
 
     def parse_descs(self, descs):
         embeddings = self.elmo(
             descs, signature="default", as_dict=True)["default"]
-        return embeddings
+        x = self.dense1(embeddings)
+        return x

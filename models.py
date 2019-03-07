@@ -51,11 +51,11 @@ def baseline_model_1(desc,
                      train=True):
     embeddings = elmo(desc)
     text_embedding = tf.layers.dense(
-        embeddings, 64, activation=tf.nn.leaky_relu, name='text_dense1')
-    text_embedding = tf.layers.dense(
-        text_embedding, 64, activation=tf.nn.leaky_relu, name='text_dense2')
-    text_embedding = tf.layers.dense(
-        text_embedding, 32, activation=tf.nn.leaky_relu, name='text_dense3')
+        embeddings, 1024, activation=tf.nn.leaky_relu, name='text_dense1')
+    # text_embedding = tf.layers.dense(
+    #     text_embedding, 512, activation=tf.nn.leaky_relu, name='text_dense2')
+    # text_embedding = tf.layers.dense(
+    #     text_embedding, 32, activation=tf.nn.leaky_relu, name='text_dense3')
 
     image_embedding = tf.layers.conv2d(
         inputs, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
@@ -68,9 +68,9 @@ def baseline_model_1(desc,
     image_embedding = tf.layers.flatten(image_embedding, 'flatten')
 
     image_embedding = tf.layers.dense(
-        image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense1')
-    image_embedding = tf.layers.dense(
-        image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense2')
+        image_embedding, 1024, activation=tf.nn.leaky_relu, name='image_dense1')
+    # image_embedding = tf.layers.dense(
+    #     image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense2')
     # image_embedding = tf.layers.dense(
     #     image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense3')
     # rnn_cell = tf.nn.rnn_cell.BasicRNNCell(128)
@@ -85,11 +85,12 @@ def baseline_model_1(desc,
     # example_code = examples_encoder(examples)
     # concept_rep = tf.concat([inputs, example_code, outputs[:, -1, :]], 0)
     x = tf.concat([text_embedding, image_embedding], 1)
+    x = tf.nn.dropout(x, .5)
     # if train:
     #     concept_rep = tf.nn.dropout(concept_rep, .5)
     # x = tf.layers.dense(
     #     concept_rep, 32, activation=tf.nn.leaky_relu, name='dense1')
-    x = tf.layers.dense(x, 32, activation=tf.nn.leaky_relu, name='dense1')
+    x = tf.layers.dense(x, 1024, activation=tf.nn.leaky_relu, name='dense1')
     logits = tf.layers.dense(x, 2, name='dense2')
     loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
         labels=labels, logits=logits)

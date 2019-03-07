@@ -70,11 +70,13 @@ def train_graph(name='comp'):
             parser = CompositionalParser()
     train_image, train_label, train_desc = train_dataset.make_one_shot_iterator(
     ).get_next()
-    val_image, val_label, val_desc = val_dataset.make_one_shot_iterator(
-    ).get_next()
+    val_iterator = val_dataset.make_initializable_iterator()
+    val_image, val_label, val_desc = val_iterator.get_next()
     optimizer = tf.train.AdamOptimizer(0.001)
 
     train_context = parser.parse_descs(train_desc)
+    train_context = tf.nn.dropout(train_context, .5)
+
     train_predictions, train_loss = model_fn(train_image, train_label,
                                              train_context, True)
     train_loss = tf.reduce_sum(train_loss)
@@ -144,6 +146,7 @@ def train_graph(name='comp'):
             if step % val_steps == 0:
                 tc_val = 0.0
                 loss_val = 0.0
+                sess.run(val_iterator.initializer)
                 while True:
                     try:
                         val_batch_loss, val_batch_accuracy = sess.run(
@@ -157,6 +160,8 @@ def train_graph(name='comp'):
 
 
 def train(name='comp'):
+    tf.enable_eager_execution()
+
     is_baseline = 'bl' in name
     effective_batch_size = 32
     log_steps = 10
@@ -187,6 +192,7 @@ def train(name='comp'):
         with tf.GradientTape() as tape:
             with global_container.as_default():
                 context = parser.parse_descs(desc)
+                context = tf.nn.dropout(context, .5)
                 predictions, loss = model_fn(image, label, context, True)
             tc_train += float(
                 tf.reduce_sum(
@@ -200,6 +206,7 @@ def train(name='comp'):
             accumulated_step += 1
         else:
             grads = zip(*accumulated_grads)
+            print(list(zip(*accumulated_grads)))
             grads = [
                 tf.reduce_sum(tf.stack(g, axis=-1), axis=-1) for g in grads
             ]
@@ -236,7 +243,10 @@ def main():
     parser = argparse.ArgumentParser(description='Compositional Learning')
     parser.add_argument('-m', '--model', choices=['bl', 'comp'], default='comp')
     args = parser.parse_args()
-    train_graph(args.model)
+    if args.model == 'bl':
+        train_graph(args.model)
+    else:
+        train(args.model)
 
 
 if __name__ == '__main__':
