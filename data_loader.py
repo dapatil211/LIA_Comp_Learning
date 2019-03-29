@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import tensorflow as tf
 
 
 def load_data(folder):
@@ -58,3 +59,47 @@ def load_dil(folder):
     labels = np.int32(np.load(os.path.join(folder, 'labels.npy')))
     descs = parse(os.path.join(folder, 'hints_split.npy'))
     return inputs, labels, descs
+
+
+def parse_example(example_proto):
+    feature_description = {
+        'image': tf.FixedLenFeature([], tf.string, default_value=''),
+        'label': tf.FixedLenFeature([], tf.int64, default_value=0),
+        'concept': tf.FixedLenFeature([], tf.string, default_value=''),
+        # 'full_caption': tf.FixedLenFeature([], tf.string, default_value=''),
+    }
+    features = tf.parse_single_example(example_proto, feature_description)
+    return tf.image.decode_png(features['image'],
+                               3), features['label'], features['concept']
+
+
+def create_dataset(filename):
+
+    raw_dataset = tf.data.TFRecordDataset(filename)
+    raw_dataset = raw_dataset.map(parse_example)
+
+    return raw_dataset
+
+
+def create_input_parser(comp=False):
+    if comp:
+        vocab = [
+            'square', 'rectangle', 'triangle', 'pentagon', 'cross', 'circle',
+            'semicircle', 'ellipse', 'red', 'green', 'blue', 'yellow',
+            'magenta', 'cyan', 'gray'
+        ]
+        table = tf.contrib.lookup.index_table_from_tensor(mapping=vocab)
+
+    def parse(image, label, desc_string):
+        desc_string = tf.string_strip(desc_string)
+        if comp:
+            desc_string = tf.string_split([desc_string], ',').values
+            desc_string = tf.string_split(desc_string)
+            desc_string = tf.sparse_tensor_to_dense(
+                table.lookup(desc_string), default_value=-1)
+        image = tf.image.convert_image_dtype(image, tf.float32)
+        image.set_shape([64, 64, 3])
+        # label = tf.cast(label, tf.int32)
+        return image, label, desc_string
+
+    return parse
