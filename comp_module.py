@@ -49,12 +49,13 @@ class CompositionalParser:
             'shape_embeddings', [9, 8],
             initializer=tf.random_normal_initializer)
         self.color_embeddings = tf.get_variable(
-            'color_embeddings', [8, 8, 8],
+            'color_embeddings', [8, 8],
             initializer=tf.random_normal_initializer)
-        self.dense1 = tf.layers.Dense(16)
-        self.dense2 = tf.layers.Dense(8)
-        self.apply_dense1 = tf.layers.Dense(16)
-        self.apply_dense2 = tf.layers.Dense(8)
+        self.scope = tf.get_variable_scope()
+        self.dense1 = tf.layers.Dense(16, name='dense1')
+        self.dense2 = tf.layers.Dense(8, name='dense2')
+        self.apply_dense1 = tf.layers.Dense(16, name='dense1')
+        self.apply_dense2 = tf.layers.Dense(8, name='dense2')
 
     def lookup_fn(self, index):
         return tf.cond(
@@ -64,38 +65,63 @@ class CompositionalParser:
                 tf.nn.embedding_lookup(self.color_embeddings, index - 9), 0))
 
     def lookup_color_fn(self, index):
+        # print_op = tf.print({
+        #     'index':
+        #     index,
+        #     'color_embeddings':
+        #     self.color_embeddings,
+        #     'curent_embedding':
+        #     tf.expand_dims(tf.gather(self.color_embeddings, index - 9), 0)
+        # })
+        # with tf.control_dependencies([print_op]):
         return tf.expand_dims(tf.gather(self.color_embeddings, index - 9), 0)
 
     def lookup_shape_fn(self, index):
+        # print_op = tf.print({
+        #     'index':
+        #     index,
+        #     'shape_embeddings':
+        #     tf.count_nonzero(self.shape_embeddings),
+        #     'curent_embedding':
+        #     tf.count_nonzero(
+        #         tf.expand_dims(tf.gather(self.shape_embeddings, index), 0))
+        # })
+        # with tf.control_dependencies([print_op]):
         return tf.expand_dims(tf.gather(self.shape_embeddings, index), 0)
 
     def comp_fn(self, c1, c2):
-        c1 = self.dense1(c1)
-        c2 = self.dense1(c2)
-        return self.dense2(
-            tf.nn.selu(tf.reduce_sum(tf.stack([c1, c2], axis=0), axis=0)))
+        with tf.variable_scope(self.scope):
+            with tf.variable_scope('comp'):
+
+                c1 = self.dense1(c1)
+                c2 = self.dense1(c2)
+                return self.dense2(
+                    tf.nn.selu(
+                        tf.reduce_sum(tf.stack([c1, c2], axis=0), axis=0)))
 
     def apply_fn(self, adj, base):
-        concat = tf.concat([adj, base], axis=-1)
-        return self.apply_dense2(tf.nn.selu(self.apply_dense1(concat)))
+        with tf.variable_scope(self.scope):
+            with tf.variable_scope('apply'):
+                concat = tf.concat([adj, base], axis=-1)
+                return self.apply_dense2(tf.nn.selu(self.apply_dense1(concat)))
 
     def matrix_apply_fn(self, adj, base):
         # x = tf.reshape(adj, [8, 8])
-        print_op = tf.print({
-            'adj': tf.math.count_nonzero(adj),
-            'base': tf.math.count_nonzero(base)
-        })
-        with tf.control_dependencies([print_op]):
-            return tf.matmul(adj[0], tf.transpose(base))[None, :]
+        # print_op = tf.print({
+        #     'adj': tf.math.count_nonzero(adj),
+        #     'base': tf.math.count_nonzero(base)
+        # })
+        # with tf.control_dependencies([print_op]):
+        return tf.matmul(adj[0], tf.transpose(base))[None, :]
 
     def parse_single_desc(self, desc):
-        shape = PrimitiveContext(desc[0], self.lookup_shape_fn)
-        color = PrimitiveContext(desc[1] + 1, self.lookup_color_fn)
-        if desc[0] == -1:
-            shape = PrimitiveContext(8, self.lookup_shape_fn)
+        shape = PrimitiveContext(desc[1], self.lookup_shape_fn)
+        color = PrimitiveContext(desc[0] + 1, self.lookup_color_fn)
         if desc[1] == -1:
+            shape = PrimitiveContext(8, self.lookup_shape_fn)
+        if desc[0] == -1:
             color = PrimitiveContext(16, self.lookup_color_fn)
-        return ApplyContext(color, shape, self.matrix_apply_fn)
+        return ApplyContext(color, shape, self.apply_fn)
 
     def parse_multiple_descs(self, desc):
         return AndContext(

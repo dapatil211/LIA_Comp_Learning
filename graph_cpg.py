@@ -13,6 +13,8 @@ class CPG(object):
 
     def __init__(self):
         self.vars = dict()
+        with tf.variable_scope('cpg', reuse=tf.AUTO_REUSE):
+            self.scope = tf.get_variable_scope()
 
     def getter(self, context):
         return partial(self._getter, context=context)
@@ -36,7 +38,7 @@ class CPG(object):
                 **kwargs):
         # If the requested variable is not trainable, just invoke the wrapped
         # variable getter directly.
-        if not trainable:
+        if not trainable or 'dense' not in name:
             return getter(
                 name=name,
                 shape=shape,
@@ -56,7 +58,7 @@ class CPG(object):
         shape = tf.TensorShape(shape)
 
         scope = tf.get_variable_scope().name
-        name = name + '/' + scope if scope else name
+        # name = scope + '/' + name if scope else name
         if name in self.vars:
             # Here we handle the case when returning an existing variable.
             # if reuse is False:
@@ -94,11 +96,13 @@ class CPG(object):
                              'with tf.get_variable(). Did you mean to set '
                              'reuse=tf.AUTO_REUSE in VarScope?' % name)
 
-        with tf.variable_scope('cpg/' + name, use_resource=True):
-            num_params = shape.num_elements()
-            params = self._compute_params(getter, num_params, context)
-            params = tf.reshape(params, shape)
-            self.vars[name] = params
+        # with tf.variable_scope('cpg/' + name, use_resource=True):
+        with tf.variable_scope(self.scope, use_resource=True):
+            with tf.variable_scope(name):
+                num_params = shape.num_elements()
+                params = self._compute_params(getter, num_params, context)
+                params = tf.reshape(params, shape)
+                self.vars[name] = params
 
         return params
 
@@ -115,18 +119,26 @@ class LinearCPG(CPG):
     def _compute_params(self, getter, num_params, context, compute_vars=None):
         with tf.variable_scope('compute_params', use_resource=True):
             scope = tf.get_variable_scope().name
+            # print('pre var name: ' + name)
             weights_name = 'weights'
-            weights_name = weights_name + '/' + scope if scope else weights_name
+            # weights_name = scope + '/' + weights_name if scope else weights_name
             # if compute_vars is not None and weights_name in compute_vars:
             #     weights = compute_vars[weights_name]
             # else:
-            weights = getter(
+            weights = tf.get_variable(
                 name=weights_name,
                 shape=[context.shape[-1], num_params],
                 dtype=context.dtype,
                 initializer=tf.glorot_uniform_initializer(),
                 use_resource=True)
-            return tf.matmul(context, weights)  #, {weights_name: weights}
+            # weights = getter(
+            #     name=weights_name,
+            #     shape=[context.shape[-1], num_params],
+            #     dtype=context.dtype,
+            #     initializer=tf.glorot_uniform_initializer(),
+            #     use_resource=True)
+            x = tf.matmul(context, weights)  #, {weights_name: weights}
+            return x
 
 
 class LowRankLinearCPG(CPG):
@@ -139,9 +151,9 @@ class LowRankLinearCPG(CPG):
         with tf.variable_scope('compute_params', use_resource=True):
             scope = tf.get_variable_scope().name
             weights_1_name = 'weights_1'
-            weights_1_name = weights_1_name + '/' + scope if scope else weights_1_name
+            weights_1_name = scope + '/' + weights_1_name if scope else weights_1_name
             weights_2_name = 'weights_2'
-            weights_2_name = weights_2_name + '/' + scope if scope else weights_2_name
+            weights_2_name = scope + '/' + weights_2_name if scope else weights_2_name
             if compute_vars is not None and weights_1_name in compute_vars:
                 weights_1 = compute_vars[weights_1_name]
             else:

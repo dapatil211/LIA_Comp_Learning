@@ -97,7 +97,7 @@ def create_input_parser(comp=False):
             desc_string = tf.string_split(desc_string)
             desc_string = tf.sparse_tensor_to_dense(
                 table.lookup(desc_string), default_value=-1)
-        image = tf.image.convert_image_dtype(image, tf.float32)
+        image = tf.cast(image, tf.float32) / 255.
         image.set_shape([64, 64, 3])
         # label = tf.cast(label, tf.int32)
         return image, label, desc_string

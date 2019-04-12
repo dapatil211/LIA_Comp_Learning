@@ -2,12 +2,12 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import tensorflow as tf
 import os
-
+import random
 from comp_module import CompositionalParser, BasicParser
 # from cpg import LinearCPG
 from graph_cpg import LinearCPG, LowRankLinearCPG
 from data_loader import load_dil, load_all_data, create_dataset, create_input_parser
-
+from pprint import pprint
 cpg = LinearCPG()
 # cpg = LowRankLinearCPG(4)
 # tf.enable_eager_execution()
@@ -29,52 +29,124 @@ def summaries(v, scope=''):
         return tf.summary.merge([m_s, stddev_s, max_s, min_s, hist_s])
 
 
-def model_fn(images, labels, contexts, train):
-    # if train:
-    #     contexts = tf.nn.dropout(contexts, .75)
+def image_summaries(x, scope=''):
+    # with tf.name_scope(scope):
+    im_summaries = []
+    for i in range(x.shape[-1]):
+        im_summaries.append(
+            tf.summary.image(scope, tf.expand_dims(x[:, :, :, i], 3)))
+    return tf.summary.merge(im_summaries)
+
+
+def model_fn(images,
+             labels,
+             contexts,
+             train,
+             pool_dropout=.8,
+             fc_dropout=.6,
+             context_dropout=.4):
     with tf.variable_scope(
             'model',
             use_resource=True,
-            custom_getter=cpg.getter(tf.expand_dims(contexts[0, :], 0))):
+            custom_getter=cpg.getter(tf.expand_dims(contexts[0, :], 0)),
+    ):
+        # images = tf.Print(images, [tf.reduce_max(images)])
+        if train:
+            contexts = tf.nn.dropout(contexts, 1 - context_dropout)
+        # x = tf.layers.batch_normalization(images, training=train, name='bn1')
         x = tf.layers.conv2d(
-            images, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
-        x = tf.layers.max_pooling2d(x, 3, 1, name='pool1')
-        x = tf.layers.conv2d(
-            x, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
+            images, 32, 5, 1, activation=tf.nn.lrn, name='conv1')
+        sum_conv1 = image_summaries(x, 'conv1')
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool1')
+        # sum_pool1 = image_summaries(x, 'pool1')
+        # if train:
+        #     x = tf.nn.dropout(x, 1 - pool_dropout)
+        # x = tf.layers.batch_normalization(x, training=train, name='bn2')
+        x = tf.layers.conv2d(x, 48, 3, activation=tf.nn.lrn, name='conv2')
+        sum_conv2 = image_summaries(x, 'conv2')
         x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
+        # sum_pool2 = image_summaries(x, 'pool2')
+
+        # if train:
+        # x = tf.nn.dropout(x, 1 - pool_dropout)
+        x = tf.layers.conv2d(x, 64, 3, activation=tf.nn.lrn, name='conv3')
+        sum_conv3 = image_summaries(x, 'conv3')
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool3')
+        x = tf.layers.conv2d(x, 128, 3, activation=tf.nn.lrn, name='conv4')
+        sum_conv4 = image_summaries(x, 'conv4')
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool4')
+        # sum_pool2 = image_summaries(x, 'pool4')
         x = tf.layers.flatten(x, 'flatten')
         # if train:
-        #     x = tf.nn.dropout(x, keep_prob=.5)
-        x = tf.layers.dense(x, 32, activation=tf.nn.selu, name='dense1')
+        #     x = tf.nn.dropout(x, keep_prob=1 - fc_dropout)
+        x = tf.layers.dense(x, 128, activation=tf.nn.selu, name='dense1')
         logits = tf.layers.dense(x, 2, name='dense2')
+
+        # if train:
+        #     contexts = tf.nn.dropout(contexts, 1 - context_dropout)
+        # # x = tf.layers.batch_normalization(images, training=train, name='bn1')
+        # x = tf.layers.conv2d(
+        #     images, 32, 5, (2, 2), activation=tf.nn.lrn, name='conv1', padding='SAME')
+        # sum_conv1 = image_summaries(x, 'conv1')
+        # x = tf.layers.max_pooling2d(x, 3, 2, name='pool1')
+        # sum_pool1 = image_summaries(x, 'pool1')
+        # if train:
+        #     x = tf.nn.dropout(x, 1 - pool_dropout)
+        # # x = tf.layers.batch_normalization(x, training=train, name='bn2')
+        # x = tf.layers.conv2d(
+        #     x, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
+        # sum_conv2 = image_summaries(x, 'conv2')
+        # x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
+        # sum_pool2 = image_summaries(x, 'pool2')
+        # if train:
+        #     x = tf.nn.dropout(x, 1 - pool_dropout)
+        # x = tf.layers.flatten(x, 'flatten')
+        # # if train:
+        # #     x = tf.nn.dropout(x, keep_prob=1 - fc_dropout)
+        # x = tf.layers.dense(x, 32, activation=tf.nn.selu, name='dense1')
+        # logits = tf.layers.dense(x, 2, name='dense2')
     ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
-    # l2_loss = tf.add_n([
-    #     tf.nn.l2_loss(v)
-    #     for v in tf.trainable_variables()
-    #     if 'model' in v.name and 'kernel' in v.name
-    # ]) * .001
-    loss = ce_loss  # + l2_loss
-    predictions = tf.argmax(logits, axis=1, output_type=tf.int64)
+        labels=labels, logits=logits, name='ce_loss')
+    l2_loss = tf.add_n([
+        tf.nn.l2_loss(v)
+        for v in tf.trainable_variables()
+        if 'model' in v.name and 'kernel' in v.name
+    ],
+                       name='l2_loss') * .025
+    loss = ce_loss + l2_loss
+    predictions = tf.argmax(
+        logits, axis=1, output_type=tf.int64, name='predictions')
+    norm_logits = tf.nn.log_softmax(logits, axis=-1)
+    pairs = tf.reshape(norm_logits, [-1, 2, 2])[:, :, 1]
+    val_preds = tf.argmax(pairs, axis=1, output_type=tf.int64, name='val_preds')
+    val_acc = tf.reduce_mean(
+        tf.cast(tf.equal(val_preds, 0), tf.float32), name='val_accuracy')
     accuracy = tf.reduce_mean(
-        tf.cast(tf.equal(predictions, labels), tf.float32))
+        tf.cast(tf.equal(predictions, labels), tf.float32), name='accuracy')
 
     # with tf.name_scope('train' if train else 'val'):
     logits_summary = summaries(logits, 'logits')
     ce_loss_summary = summaries(loss, 'ce_loss')
-    # with tf.name_scope('l2_loss'):
-    #     l2_loss_summary = tf.summary.scalar('l2_loss', l2_loss)
+    with tf.name_scope('l2_loss'):
+        l2_loss_summary = tf.summary.scalar('l2_loss', l2_loss)
     loss_summary = summaries(loss, 'loss')
     with tf.name_scope('accuracy'):
         accuracy_summary = tf.summary.scalar('accuracy', accuracy)
+    with tf.name_scope('comparative_accuracy'):
+        comp_accuracy_summary = tf.summary.scalar('comparative_accuracy',
+                                                  val_acc)
 
     # all_summaries = tf.summary.merge([
     #     logits_summary, ce_loss_summary, l2_loss_summary, loss_summary,
     #     accuracy_summary
     # ])
-    all_summaries = tf.summary.merge(
-        [logits_summary, ce_loss_summary, loss_summary, accuracy_summary])
-    return loss, accuracy, all_summaries
+    all_summaries = tf.summary.merge([
+        logits_summary, ce_loss_summary, l2_loss_summary, loss_summary,
+        accuracy_summary, comp_accuracy_summary
+    ])
+    im_summaries = tf.summary.merge(
+        [sum_conv1, sum_conv2, sum_conv3, sum_conv4])
+    return loss, accuracy, val_acc, all_summaries, im_summaries
 
 
 def input_fn(folder, is_train, is_baseline=False):
@@ -109,16 +181,17 @@ file_to_num_examples = {
 def in_fn(file, num_examples, is_train=True, comp=True):
     dataset = create_dataset(file)
     dataset = dataset.map(create_input_parser(comp=comp))
-    dataset = dataset.batch(256)
+    dataset = dataset.batch(32)
     if is_train:
         dataset = dataset.apply(
             tf.data.experimental.shuffle_and_repeat(
-                min(num_examples // 256, 128)))
+                min(num_examples // 32, 376)))
     dataset.prefetch(1024)
     return dataset, num_examples
 
 
-def train(folder='data', name='comp', dataset='apply'):
+def train(folder='data', name='comp', dataset='apply', summary_dir='summary'):
+    # with tf.device('cpu'):
     train_dataset, num_train = in_fn(
         os.path.join(folder, 'train',
                      'dataset.tfrecord'), file_to_num_examples[os.path.join(
@@ -141,11 +214,12 @@ def train(folder='data', name='comp', dataset='apply'):
     train_image, train_label, train_desc = train_iterator.get_next()
     val_iterator = val_dataset.make_initializable_iterator()
     val_image, val_label, val_desc = val_iterator.get_next()
-    optimizer = tf.train.AdamOptimizer(0.001)
+    optimizer = tf.train.AdamOptimizer(0.00001)
 
-    train_context = parser.parse_descs(train_desc, dataset == 'apply')
-    train_loss, train_accuracy, train_summary = model_fn(
-        train_image, train_label, train_context, True)
+    with tf.variable_scope('model'):
+        train_context = parser.parse_descs(train_desc, dataset == 'apply')
+        train_loss, train_accuracy, _, train_summary, _ = model_fn(
+            train_image, train_label, train_context, True)
     train_loss = tf.reduce_mean(train_loss)
     # train_accuracy = tf.reduce_mean(
     #     tf.cast(tf.equal(train_predictions, train_label), tf.float32))
@@ -157,22 +231,30 @@ def train(folder='data', name='comp', dataset='apply'):
     for g, v in grads:
         grad_summaries.append(summaries(g, v.name[:-2] + '_grads'))
     context_summary = summaries(train_context, 'context')
-    color_summary = summaries(parser.color_embeddings, 'color_embeddings')
-    shape_summary = summaries(parser.shape_embeddings, 'shape_embeddings')
 
-    train_summary = tf.summary.merge(
-        grad_summaries +
-        [train_summary, context_summary, color_summary, shape_summary])
+    train_summary = tf.summary.merge(grad_summaries +
+                                     [train_summary, context_summary])
+    if name == 'comp':
+        color_summary = summaries(parser.color_embeddings, 'color_embeddings')
+        shape_summary = summaries(parser.shape_embeddings, 'shape_embeddings')
+        train_summary = tf.summary.merge(
+            [train_summary, color_summary, shape_summary])
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     train_op = optimizer.apply_gradients(grads)
+    train_op = tf.group([train_op, update_ops])
     # train_op = optimizer.minimize(train_loss)
-    with tf.variable_scope('', reuse=tf.AUTO_REUSE):
+    with tf.variable_scope('model', reuse=True):
         val_context = parser.parse_descs(val_desc, dataset == 'apply')
-        val_loss, val_accuracy, val_summary = model_fn(val_image, val_label,
-                                                       val_context, False)
+        val_loss, val_accuracy, val_comp_accuracy, val_summary, val_image_summary = model_fn(
+            val_image, val_label, val_context, False)
     val_loss = tf.reduce_mean(val_loss)
     # val_accuracy = tf.reduce_sum(
     #     tf.cast(tf.equal(val_predictions, val_label), tf.float32))
-
+    # pprint(
+    # n.name
+    # for n in tf.get_default_graph().as_graph_def().node
+    # if n.name.startswith('cpg')
+    # tf.trainable_variables())
     init = [
         tf.global_variables_initializer(), train_iterator.initializer,
         tf.tables_initializer()
@@ -181,13 +263,14 @@ def train(folder='data', name='comp', dataset='apply'):
     cum_train_accuracy = 0.0
     cum_train_loss = 0.0
     log_steps = 10
-    val_steps = max(num_train // 256, 50)
+    train_epoch_steps = max(num_train // 256, 50)
+    val_epoch_steps = num_val // 256
+    total_val_steps = 0
     with tf.Session() as sess:
         sess.run(init)
         train_writer = tf.summary.FileWriter(
-            os.path.join(dataset, name, 'summaries') + '/train', sess.graph)
-        test_writer = tf.summary.FileWriter(
-            os.path.join(dataset, name, 'summaries') + '/test')
+            os.path.join(summary_dir) + '/train', sess.graph)
+        test_writer = tf.summary.FileWriter(os.path.join(summary_dir) + '/test')
         while True:
             _, batch_loss, batch_acc, summary = sess.run(
                 [train_op, train_loss, train_accuracy, train_summary])
@@ -202,22 +285,39 @@ def train(folder='data', name='comp', dataset='apply'):
                 cum_train_loss = 0.0
                 cum_train_accuracy = 0.0
 
-            if step % val_steps == 0:
+            if step % train_epoch_steps == 0:
                 tc_val = 0.0
+                tc_comp_val = 0.0
                 loss_val = 0.0
                 sess.run(val_iterator.initializer)
                 batches = 0.0
+                image_viz_step = random.randint(0, val_epoch_steps - 1)
                 while True:
                     try:
-                        val_batch_loss, val_batch_accuracy, summary = sess.run(
-                            [val_loss, val_accuracy, val_summary])
+                        if batches == 0.0:
+                            val_batch_loss, val_batch_accuracy, val_batch_comp_accuracy, summary, im_summary = sess.run(
+                                [
+                                    val_loss, val_accuracy, val_comp_accuracy,
+                                    val_summary, val_image_summary
+                                ])
+                            test_writer.add_summary(im_summary, total_val_steps)
+                        else:
+                            val_batch_loss, val_batch_accuracy, val_batch_comp_accuracy, summary = sess.run(
+                                [
+                                    val_loss, val_accuracy, val_comp_accuracy,
+                                    val_summary
+                                ])
                         tc_val += val_batch_accuracy
+                        tc_comp_val += val_batch_comp_accuracy
                         loss_val += val_batch_loss
                         batches += 1.0
-                        test_writer.add_summary(summary)
+                        test_writer.add_summary(summary, total_val_steps)
+                        total_val_steps += 1
                     except:
-                        print('Step %d\tval loss:%f\tval accuracy:%f' %
-                              (step, loss_val / batches, tc_val / batches))
+                        print(
+                            'Step %d\tval loss:%f\tval accuracy:%f\tval comp accuracy: %f'
+                            % (step, loss_val / batches, tc_val / batches,
+                               tc_comp_val / batches))
                         break
 
 
@@ -411,9 +511,10 @@ def main():
     parser.add_argument('-f', '--folder', default='data/')
     parser.add_argument(
         '-d', '--dataset', choices=['apply', 'and'], default='apply')
+    parser.add_argument('-s', '--summary', default='summary')
 
     args = parser.parse_args()
-    train(args.folder, args.model, args.dataset)
+    train(args.folder, args.model, args.dataset, args.summary)
     # if args.model == 'bl':
     #     train_graph(args.model)
     # else:
