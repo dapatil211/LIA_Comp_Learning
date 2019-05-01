@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow_hub as hub
+import numpy as np
 tfd = tf.contrib.distributions
 
 IMAGE_EMBED_SIZE = 1080
@@ -7,8 +8,26 @@ TEXT_EMBED_SIZE = 1024
 
 
 def elmo(sentences):
+    sentences = tf.squeeze(sentences)
     elmo = hub.Module("https://tfhub.dev/google/elmo/2", trainable=True)
     embeddings = elmo(sentences, signature="default", as_dict=True)["default"]
+    return embeddings
+
+
+def glove(sentences):
+    embedding = np.load('embeddings.npy')
+
+    embedding = tf.get_variable('embeddings',
+                                initializer=embedding.astype(np.float32),
+                                dtype=tf.float32)
+    # dense1 = tf.layers.Dense(8)
+
+    embeddings = tf.map_fn(lambda x: tf.nn.embedding_lookup(embedding, x),
+                           sentences,
+                           dtype=tf.float32)
+    embeddings = tf.reduce_sum(embeddings, [1, 2])
+    # embeddings = self.elmo(descs, signature="default",
+    #                        as_dict=True)["default"]
     return embeddings
 
 
@@ -42,33 +61,89 @@ with image embedding.
 """
 
 
-def baseline_model_1(desc,
-                     lens,
-                     examples,
-                     inputs,
-                     labels,
-                     batch_size=32,
-                     train=True):
-    embeddings = elmo(desc)
-    text_embedding = tf.layers.dense(
-        embeddings, 512, activation=tf.nn.leaky_relu, name='text_dense1')
+def baseline_model_1(
+        # desc,
+        #                      lens,
+        #                      examples,
+        #                      inputs,
+        #                      labels,
+        inputs,
+        labels,
+        desc,
+        batch_size=32,
+        train=True):
+    embeddings = glove(desc)
+    text_embedding = tf.layers.dense(embeddings,
+                                     128,
+                                     activation=tf.nn.leaky_relu,
+                                     name='text_dense1')
     # text_embedding = tf.layers.dense(
     #     text_embedding, 512, activation=tf.nn.leaky_relu, name='text_dense2')
     # text_embedding = tf.layers.dense(
     #     text_embedding, 32, activation=tf.nn.leaky_relu, name='text_dense3')
 
-    image_embedding = tf.layers.conv2d(
-        inputs, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
-    image_embedding = tf.layers.max_pooling2d(
-        image_embedding, 3, 1, name='pool1')
-    image_embedding = tf.layers.conv2d(
-        image_embedding, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
-    image_embedding = tf.layers.max_pooling2d(
-        image_embedding, 3, 2, name='pool2')
+    # image_embedding = tf.layers.conv2d(
+    #     inputs, 32, 5, (3, 3), activation=tf.nn.leaky_relu, name='conv1')
+    # image_embedding = tf.layers.max_pooling2d(
+    #     image_embedding, 3, 1, name='pool1')
+    # image_embedding = tf.layers.conv2d(
+    #     image_embedding, 16, 3, activation=tf.nn.leaky_relu, name='conv2')
+    # image_embedding = tf.layers.max_pooling2d(
+    #     image_embedding, 3, 2, name='pool2')
+    image_embedding = tf.layers.batch_normalization(inputs,
+                                                    training=train,
+                                                    name='bn1')
+    image_embedding = tf.layers.conv2d(image_embedding,
+                                       32,
+                                       5,
+                                       activation=tf.nn.lrn,
+                                       name='conv1')
+    image_embedding = tf.layers.max_pooling2d(image_embedding,
+                                              3,
+                                              2,
+                                              name='pool1')
+    image_embedding = tf.layers.batch_normalization(image_embedding,
+                                                    training=train,
+                                                    name='bn2')
+    image_embedding = tf.layers.conv2d(image_embedding,
+                                       48,
+                                       3,
+                                       activation=tf.nn.lrn,
+                                       name='conv2')
+    image_embedding = tf.layers.max_pooling2d(image_embedding,
+                                              3,
+                                              2,
+                                              name='pool2')
+    image_embedding = tf.layers.batch_normalization(image_embedding,
+                                                    training=train,
+                                                    name='bn3')
+    image_embedding = tf.layers.conv2d(image_embedding,
+                                       64,
+                                       3,
+                                       activation=tf.nn.lrn,
+                                       name='conv3')
+    image_embedding = tf.layers.max_pooling2d(image_embedding,
+                                              3,
+                                              2,
+                                              name='pool3')
+    image_embedding = tf.layers.batch_normalization(image_embedding,
+                                                    training=train,
+                                                    name='bn4')
+    image_embedding = tf.layers.conv2d(image_embedding,
+                                       128,
+                                       3,
+                                       activation=tf.nn.lrn,
+                                       name='conv4')
+    image_embedding = tf.layers.max_pooling2d(image_embedding,
+                                              3,
+                                              2,
+                                              name='pool4')
     image_embedding = tf.layers.flatten(image_embedding, 'flatten')
 
-    image_embedding = tf.layers.dense(
-        image_embedding, 512, activation=tf.nn.leaky_relu, name='image_dense1')
+    image_embedding = tf.layers.dense(image_embedding,
+                                      128,
+                                      activation=tf.nn.leaky_relu,
+                                      name='image_dense1')
     # image_embedding = tf.layers.dense(
     #     image_embedding, 32, activation=tf.nn.leaky_relu, name='image_dense2')
     # image_embedding = tf.layers.dense(
@@ -85,22 +160,30 @@ def baseline_model_1(desc,
     # example_code = examples_encoder(examples)
     # concept_rep = tf.concat([inputs, example_code, outputs[:, -1, :]], 0)
     x = tf.concat([text_embedding, image_embedding], 1)
-    x = tf.nn.dropout(x, .5)
+    if train:
+        x = tf.nn.dropout(x, .5)
     # if train:
     #     concept_rep = tf.nn.dropout(concept_rep, .5)
     # x = tf.layers.dense(
     #     concept_rep, 32, activation=tf.nn.leaky_relu, name='dense1')
-    x = tf.layers.dense(x, 512, activation=tf.nn.leaky_relu, name='dense1')
-    x = tf.nn.dropout(x, .5)
+    x = tf.layers.dense(x, 128, activation=tf.nn.leaky_relu, name='dense1')
+    # if train:
+    #     x = tf.nn.dropout(x, .5)
     logits = tf.layers.dense(x, 2, name='dense2')
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
-    loss = tf.reduce_sum(loss)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                          logits=logits)
+    loss = tf.reduce_mean(loss)
     predictions = tf.argmax(logits, axis=1)
     with tf.name_scope('metrics'):
         epoch_loss, epoch_loss_op = tf.metrics.mean(loss)
         acc, acc_op = tf.metrics.accuracy(labels, predictions)
-    return logits, loss, acc, acc_op, epoch_loss, epoch_loss_op
+    summaries = tf.summary.merge([
+        tf.summary.histogram('predictions', predictions),
+        tf.summary.scalar('loss', loss),
+        tf.summary.histogram('logits', logits),
+        tf.summary.scalar('accuracy', acc)
+    ])
+    return logits, loss, acc, acc_op, epoch_loss, epoch_loss_op, summaries
 
 
 """
@@ -114,18 +197,18 @@ def baseline_model_2(desc, lens, examples, inputs, labels):
     embeddings = elmo(desc)
     rnn_cell = tf.nn.rnn_cell.BasicRNNCell(128)
     initial_state = rnn_cell.zero_state(BATCH_SIZE, dtype=tf.float32)
-    outputs, state = tf.nn.dynamic_rnn(
-        rnn_cell,
-        embeddings,
-        sequence_length=lens,
-        initial_state=initial_state,
-        dtype=tf.float32)
+    outputs, state = tf.nn.dynamic_rnn(rnn_cell,
+                                       embeddings,
+                                       sequence_length=lens,
+                                       initial_state=initial_state,
+                                       dtype=tf.float32)
 
     example_code = examples_encoder(examples)
     concept_rep = tf.concat([example_code, outputs[:, -1, :]], 0)
     concept_rep = tf.layers.dense(concept_rep, 512, activation=tf.nn.relu)
-    concept_rep = tf.layers.dense(
-        concept_rep, 128 * 2 * 2, activation=tf.nn.relu)
+    concept_rep = tf.layers.dense(concept_rep,
+                                  128 * 2 * 2,
+                                  activation=tf.nn.relu)
     dist = tfd.MultivariateNormalDiag(concept_rep[:, :128 * 2],
                                       concept_rep[:, 128 * 2:])
     # Conjunction module
@@ -148,8 +231,8 @@ def baseline_model_2(desc, lens, examples, inputs, labels):
     # x = dense(inputs, theta)
     # logits = tf.layers.dense(x, 2, tf.nn.relu)
 
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                          logits=logits)
     predictions = tf.argmax(logits, axis=1)
     with tf.name_scope('metrics'):
         epoch_loss, epoch_loss_op = tf.metrics.mean(loss)
@@ -171,8 +254,9 @@ def baseline_model_3(desc, lens, examples, inputs, labels):
 
     # Conjunction module
     concept_rep = tf.layers.dense(concept_rep, 512, activation=tf.nn.relu)
-    concept_rep = tf.layers.dense(
-        concept_rep, 128 * 2 * 2, activation=tf.nn.relu)
+    concept_rep = tf.layers.dense(concept_rep,
+                                  128 * 2 * 2,
+                                  activation=tf.nn.relu)
     dist = tfd.MultivariateNormalDiag(concept_rep[:, :128 * 2],
                                       concept_rep[:, 128 * 2:])
     # Conjunction module
@@ -196,8 +280,8 @@ def baseline_model_3(desc, lens, examples, inputs, labels):
     # x = dense(inputs, theta)
     # logits = tf.layers.dense(x, 2, tf.nn.relu)
 
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                          logits=logits)
     predictions = tf.argmax(logits, axis=1)
     with tf.name_scope('metrics'):
         epoch_loss, epoch_loss_op = tf.metrics.mean(loss)
@@ -221,24 +305,23 @@ def model_1(desc, lens, examples, inputs, labels):
     embeddings_1 = elmo(desc_1)
     rnn_cell = tf.nn.rnn_cell.BasicRNNCell(128)
     initial_state = rnn_cell.zero_state(BATCH_SIZE, dtype=tf.float32)
-    outputs_0, state_0 = tf.nn.dynamic_rnn(
-        rnn_cell,
-        embeddings_0,
-        sequence_length=lens_0,
-        initial_state=initial_state,
-        dtype=tf.float32)
+    outputs_0, state_0 = tf.nn.dynamic_rnn(rnn_cell,
+                                           embeddings_0,
+                                           sequence_length=lens_0,
+                                           initial_state=initial_state,
+                                           dtype=tf.float32)
 
-    outputs_1, state_1 = tf.nn.dynamic_rnn(
-        rnn_cell,
-        embeddings_1,
-        sequence_length=lens_1,
-        initial_state=initial_state,
-        dtype=tf.float32)
+    outputs_1, state_1 = tf.nn.dynamic_rnn(rnn_cell,
+                                           embeddings_1,
+                                           sequence_length=lens_1,
+                                           initial_state=initial_state,
+                                           dtype=tf.float32)
 
     concept_rep = tf.concat([outputs0[:, -1, :], outputs1[:, -1, :]], 0)
     concept_rep = tf.layers.dense(concept_rep, 512, activation=tf.nn.relu)
-    concept_rep = tf.layers.dense(
-        concept_rep, 128 * 2 * 2, activation=tf.nn.relu)
+    concept_rep = tf.layers.dense(concept_rep,
+                                  128 * 2 * 2,
+                                  activation=tf.nn.relu)
     dist = tfd.MultivariateNormalDiag(concept_rep[:, :128 * 2],
                                       concept_rep[:, 128 * 2:])
     # Conjunction module
@@ -256,8 +339,8 @@ def model_1(desc, lens, examples, inputs, labels):
     # x = dense(inputs, theta)
     # logits = tf.layers.dense(x, 2, tf.nn.relu)
 
-    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
+    loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                          logits=logits)
     predictions = tf.argmax(logits, axis=1)
     with tf.name_scope('metrics'):
         epoch_loss, epoch_loss_op = tf.metrics.mean(loss)
@@ -278,33 +361,35 @@ def model_2(desc, lens, examples, inputs, labels):
     embeddings_1 = elmo(desc_1)
     rnn_cell = tf.nn.rnn_cell.BasicRNNCell(128)
     initial_state = rnn_cell.zero_state(BATCH_SIZE, dtype=tf.float32)
-    outputs_0, state_0 = tf.nn.dynamic_rnn(
-        rnn_cell,
-        embeddings_0,
-        sequence_length=lens_0,
-        initial_state=initial_state,
-        dtype=tf.float32)
+    outputs_0, state_0 = tf.nn.dynamic_rnn(rnn_cell,
+                                           embeddings_0,
+                                           sequence_length=lens_0,
+                                           initial_state=initial_state,
+                                           dtype=tf.float32)
 
-    outputs_1, state_1 = tf.nn.dynamic_rnn(
-        rnn_cell,
-        embeddings_1,
-        sequence_length=lens_1,
-        initial_state=initial_state,
-        dtype=tf.float32)
+    outputs_1, state_1 = tf.nn.dynamic_rnn(rnn_cell,
+                                           embeddings_1,
+                                           sequence_length=lens_1,
+                                           initial_state=initial_state,
+                                           dtype=tf.float32)
 
     text_concept_rep = tf.concat([outputs0[:, -1, :], outputs1[:, -1, :]], 0)
-    text_concept_rep = tf.layers.dense(
-        text_concept_rep, 512, activation=tf.nn.relu)
-    text_concept_rep = tf.layers.dense(
-        text_concept_rep, 128 * 2 * 2, activation=tf.nn.relu)
+    text_concept_rep = tf.layers.dense(text_concept_rep,
+                                       512,
+                                       activation=tf.nn.relu)
+    text_concept_rep = tf.layers.dense(text_concept_rep,
+                                       128 * 2 * 2,
+                                       activation=tf.nn.relu)
     text_dist = tfd.MultivariateNormalDiag(text_concept_rep[:, :128 * 2],
                                            text_concept_rep[:, 128 * 2:])
 
     example_code = examples_encoder(examples)
-    image_concept_rep = tf.layers.dense(
-        example_code, 512, activation=tf.nn.relu)
-    image_concept_rep = tf.layers.dense(
-        example_code, 128 * 2 * 2, activation=tf.nn.relu)
+    image_concept_rep = tf.layers.dense(example_code,
+                                        512,
+                                        activation=tf.nn.relu)
+    image_concept_rep = tf.layers.dense(example_code,
+                                        128 * 2 * 2,
+                                        activation=tf.nn.relu)
     image_dist = tfd.MultivariateNormalDiag(image_concept_rep[:, :128 * 2],
                                             image_concept_rep[:, 128 * 2:])
 
@@ -318,8 +403,8 @@ def model_2(desc, lens, examples, inputs, labels):
     x = tf.layers.dense(x, 128, activation=tf.nn.relu)
     logits = dense(inputs, theta)
 
-    ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-        labels=labels, logits=logits)
+    ce_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=labels,
+                                                             logits=logits)
     kl_loss = tfd.kl_divergence(text_dist, image_dist)
     loss = ALPHA * ce_loss + BETA * kl_loss
     predictions = tf.argmax(logits, axis=1)

@@ -81,25 +81,33 @@ def create_dataset(filename):
     return raw_dataset
 
 
-def create_input_parser(comp=False):
-    if comp:
-        vocab = [
-            'square', 'rectangle', 'triangle', 'pentagon', 'cross', 'circle',
-            'semicircle', 'ellipse', 'red', 'green', 'blue', 'yellow',
-            'magenta', 'cyan', 'gray'
-        ]
-        table = tf.contrib.lookup.index_table_from_tensor(mapping=vocab)
+class InputParser(object):
 
-    def parse(image, label, desc_string):
-        desc_string = tf.string_strip(desc_string)
+    def __init__(self, comp=False):
         if comp:
-            desc_string = tf.string_split([desc_string], ',').values
+            vocab = [
+                'square', 'rectangle', 'triangle', 'pentagon', 'cross',
+                'circle', 'semicircle', 'ellipse', 'red', 'green', 'blue',
+                'yellow', 'magenta', 'cyan', 'gray'
+            ]
+            self.table = tf.contrib.lookup.index_table_from_tensor(
+                mapping=vocab)
+        self.comp = comp
+
+    def parse_string(self, desc_string):
+        desc_string = tf.string_strip(desc_string)
+        if self.comp:
+            desc_string = tf.string_split(desc_string, ',').values
             desc_string = tf.string_split(desc_string)
             desc_string = tf.sparse_tensor_to_dense(
-                table.lookup(desc_string), default_value=-1)
+                self.table.lookup(desc_string), default_value=-1)
+        return desc_string
+
+    def parse_image(self, image):
         image = tf.cast(image, tf.float32) / 255.
         image.set_shape([64, 64, 3])
-        # label = tf.cast(label, tf.int32)
-        return image, label, desc_string
+        return image
 
-    return parse
+    def parse(self, image, label, desc_string):
+        # label = tf.cast(label, tf.int32)
+        return self.parse_image(image), label, self.parse_string([desc_string])

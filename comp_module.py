@@ -21,7 +21,7 @@ class ApplyContext:
         self.apply_fn = apply_fn
 
     def get_context(self):
-        return self.apply_fn(self.adj.get_context(), self.base.get_context())
+        return self.apply_fn(self.adj, self.base)
 
 
 class AndContext:
@@ -74,6 +74,8 @@ class CompositionalParser:
         #     tf.expand_dims(tf.gather(self.color_embeddings, index - 9), 0)
         # })
         # with tf.control_dependencies([print_op]):
+        # return tf.expand_dims(
+        #     tf.nn.embedding_lookup(self.color_embeddings, index - 9), 0)
         return tf.expand_dims(tf.gather(self.color_embeddings, index - 9), 0)
 
     def lookup_shape_fn(self, index):
@@ -87,6 +89,10 @@ class CompositionalParser:
         #         tf.expand_dims(tf.gather(self.shape_embeddings, index), 0))
         # })
         # with tf.control_dependencies([print_op]):
+        # print('*************************' + str(index) + str(type(index)))
+        # return tf.expand_dims(self.shape_embeddings[index, :], 0)
+        # return tf.expand_dims(
+        #     tf.nn.embedding_lookup(self.shape_embeddings, index), 0)
         return tf.expand_dims(tf.gather(self.shape_embeddings, index), 0)
 
     def comp_fn(self, c1, c2):
@@ -96,8 +102,8 @@ class CompositionalParser:
                 c1 = self.dense1(c1)
                 c2 = self.dense1(c2)
                 return self.dense2(
-                    tf.nn.selu(
-                        tf.reduce_sum(tf.stack([c1, c2], axis=0), axis=0)))
+                    tf.nn.selu(tf.reduce_sum(tf.stack([c1, c2], axis=0),
+                                             axis=0)))
 
     def apply_fn(self, adj, base):
         with tf.variable_scope(self.scope):
@@ -115,30 +121,58 @@ class CompositionalParser:
         return tf.matmul(adj[0], tf.transpose(base))[None, :]
 
     def parse_single_desc(self, desc):
-        shape = PrimitiveContext(desc[1], self.lookup_shape_fn)
-        color = PrimitiveContext(desc[0] + 1, self.lookup_color_fn)
-        if desc[1] == -1:
-            shape = PrimitiveContext(8, self.lookup_shape_fn)
-        if desc[0] == -1:
-            color = PrimitiveContext(16, self.lookup_color_fn)
-        return ApplyContext(color, shape, self.apply_fn)
+        # shape = PrimitiveContext(desc[1], self.lookup_shape_fn).get_context()
+        # color = PrimitiveContext(desc[0] + 1,
+        #                          self.lookup_color_fn).get_context()
+        # return tf.random.normal([1, 8])
+        # print(str(desc) + ' *****************type ' + str(type(desc)))
+        # shape = tf.random.normal([1, 8])
+        color_ind = tf.cond(
+            tf.logical_and(tf.equal(desc[1], -1), tf.less_equal(
+                desc[0],
+                7)), lambda: tf.constant(16, dtype=tf.int64), lambda: desc[0])
+        shape_ind = tf.cond(
+            tf.equal(desc[1], -1), lambda: tf.cond(
+                tf.greater(desc[0], 7), lambda: tf.constant(8, dtype=tf.int64),
+                lambda: desc[0]), lambda: desc[1])
+        # tf.logical_and(tf.equal(desc[1], -1), tf.greater_equal(
+        #     desc[0],
+        #     )), lambda: tf.constant(8, dtype=tf.int64), lambda: desc[0])
+        shape = PrimitiveContext(shape_ind, self.lookup_shape_fn).get_context()
+        color = PrimitiveContext(color_ind, self.lookup_color_fn).get_context()
+        # tf.cond(
+        #     tf.equal(desc[1], -1),
+        #     # tf.constant(True),
+        #     # lambda: tf.random.normal([1, 8]),
+        #     # lambda: tf.random.normal([1, 8])
+        #     lambda: PrimitiveContext(tf.constant(8), self.lookup_shape_fn).
+        #     get_context(),
+        #     lambda: PrimitiveContext(desc[1], self.lookup_shape_fn).get_context(
+        #     ))
+        # color = tf.cond(
+        #     tf.equal(desc[0], -1), lambda: PrimitiveContext(
+        #         16, self.lookup_shape_fn).get_context(), lambda:
+        #     PrimitiveContext(desc[0] + 1, self.lookup_shape_fn).get_context())
+        # if desc[1] == -1:
+        #     shape = PrimitiveContext(8, self.lookup_shape_fn)
+        # if desc[0] == -1:
+        # color =
+        return ApplyContext(color, shape, self.apply_fn).get_context()
 
     def parse_multiple_descs(self, desc):
-        return AndContext(
-            self.parse_single_desc(desc[0, :]),
-            self.parse_single_desc(desc[1, :]), self.comp_fn)
+        return AndContext(self.parse_single_desc(desc[0, :]),
+                          self.parse_single_desc(desc[1, :]), self.comp_fn)
 
     def parse_apply(self, descs):
-        return tf.map_fn(
-            lambda x: tf.squeeze(self.parse_single_desc(x[0, :]).get_context()),
-            descs,
-            dtype=tf.float32)
+        return tf.map_fn(lambda x: tf.squeeze(self.parse_single_desc(x[0, :])),
+                         descs,
+                         dtype=tf.float32)
 
     def parse_and(self, descs):
-        return tf.map_fn(
-            lambda x: tf.squeeze(self.parse_multiple_descs(x).get_context()),
-            descs,
-            dtype=tf.float32)
+        return tf.map_fn(lambda x: tf.squeeze(
+            self.parse_multiple_descs(x).get_context()),
+                         descs,
+                         dtype=tf.float32)
 
     def parse_descs(self, descs, apply=True):
         if apply:
@@ -154,12 +188,39 @@ class CompositionalParser:
 class BasicParser:
 
     def __init__(self):
-        self.elmo = hub.Module(
-            "https://tfhub.dev/google/elmo/2", trainable=True)
+        self.elmo = hub.Module("https://tfhub.dev/google/elmo/2",
+                               trainable=True)
         self.dense1 = tf.layers.Dense(8)
 
     def parse_descs(self, descs, apply=True):
-        embeddings = self.elmo(
-            descs, signature="default", as_dict=True)["default"]
+        embeddings = self.elmo(descs, signature="default",
+                               as_dict=True)["default"]
         x = self.dense1(embeddings)
         return x
+
+
+class GloveParser:
+
+    def __init__(self):
+        embedding = np.load('embeddings.npy')
+
+        self.scope = tf.get_variable_scope()
+
+        self.embedding = tf.get_variable('embeddings',
+                                         initializer=embedding.astype(
+                                             np.float32),
+                                         dtype=tf.float32)
+
+        self.dense1 = tf.layers.Dense(8, name='glove_dense')
+
+    def parse_descs(self, descs, apply=True):
+        with tf.variable_scope(self.scope):
+            embeddings = tf.map_fn(lambda x: tf.reduce_sum(
+                tf.nn.embedding_lookup(self.embedding, x), [0, 1]),
+                                   descs,
+                                   dtype=tf.float32)
+            # embeddings = tf.reduce_sum(embeddings, [1, 2])
+            # embeddings = self.elmo(descs, signature="default",
+            #                        as_dict=True)["default"]
+            x = self.dense1(embeddings)
+            return x
