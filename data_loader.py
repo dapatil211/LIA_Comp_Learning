@@ -73,10 +73,16 @@ def parse_example(example_proto):
                                3), features['label'], features['concept']
 
 
-def create_dataset(filename):
+def parse_example_to_dict(example_proto):
+    image, label, concept = parse_example(example_proto)
+    return {'image': image, 'concept': concept}, label
+
+
+def create_dataset(filename, to_dict=False):
 
     raw_dataset = tf.data.TFRecordDataset(filename)
-    raw_dataset = raw_dataset.map(parse_example)
+    raw_dataset = raw_dataset.map(
+        parse_example_to_dict) if to_dict else raw_dataset.map(parse_example)
 
     return raw_dataset
 
@@ -111,3 +117,19 @@ class InputParser(object):
     def parse(self, image, label, desc_string):
         # label = tf.cast(label, tf.int32)
         return self.parse_image(image), label, self.parse_string([desc_string])
+
+    def parse_to_dict(self, features, label):
+        return {
+            'image':
+            tf.map_fn(self.parse_image,
+                      features['image'],
+                      dtype=tf.float32,
+                      parallel_iterations=4),
+            'concept':
+            tf.map_fn(lambda x: self.parse_string([x]),
+                      features['concept'],
+                      dtype=tf.int64,
+                      parallel_iterations=4),
+
+            # self.parse_string([features['concept']])
+        }, label

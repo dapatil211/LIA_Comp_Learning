@@ -38,21 +38,20 @@ class CPG(object):
                 **kwargs):
         # If the requested variable is not trainable, just invoke the wrapped
         # variable getter directly.
-        if not trainable or 'dense' not in name:
-            return getter(
-                name=name,
-                shape=shape,
-                dtype=dtype,
-                initializer=initializer,
-                regularizer=regularizer,
-                reuse=reuse,
-                trainable=trainable,
-                collections=collections,
-                caching_device=caching_device,
-                validate_shape=validate_shape,
-                use_resource=use_resource,
-                constraint=constraint,
-                **kwargs)
+        if not trainable:  #or 'dense' not in name:
+            return getter(name=name,
+                          shape=shape,
+                          dtype=dtype,
+                          initializer=initializer,
+                          regularizer=regularizer,
+                          reuse=reuse,
+                          trainable=trainable,
+                          collections=collections,
+                          caching_device=caching_device,
+                          validate_shape=validate_shape,
+                          use_resource=use_resource,
+                          constraint=constraint,
+                          **kwargs)
 
         dtype = tf.as_dtype(dtype)
         shape = tf.TensorShape(shape)
@@ -157,20 +156,18 @@ class LowRankLinearCPG(CPG):
             if compute_vars is not None and weights_1_name in compute_vars:
                 weights_1 = compute_vars[weights_1_name]
             else:
-                weights_1 = getter(
-                    name=weights_1_name,
-                    shape=[context.shape[-1], self.rank],
-                    dtype=context.dtype,
-                    initializer=tf.glorot_uniform_initializer(),
-                    use_resource=True)
+                weights_1 = getter(name=weights_1_name,
+                                   shape=[context.shape[-1], self.rank],
+                                   dtype=context.dtype,
+                                   initializer=tf.glorot_uniform_initializer(),
+                                   use_resource=True)
             if compute_vars is not None and weights_2_name in compute_vars:
                 weights_2 = compute_vars[weights_2_name]
             else:
-                weights_2 = getter(
-                    name=weights_2_name,
-                    shape=[self.rank, num_params],
-                    dtype=context.dtype,
-                    initializer=tf.glorot_uniform_initializer(),
-                    use_resource=True)
+                weights_2 = getter(name=weights_2_name,
+                                   shape=[self.rank, num_params],
+                                   dtype=context.dtype,
+                                   initializer=tf.glorot_uniform_initializer(),
+                                   use_resource=True)
             return tf.matmul(tf.matmul(context, weights_1), weights_2)  #, \
             #{weights_1_name: weights_1, weights_2_name: weights_2}

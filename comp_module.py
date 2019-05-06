@@ -202,9 +202,9 @@ class BasicParser:
 class GloveParser:
 
     def __init__(self):
-        embedding = np.load('embeddings.npy')
 
         self.scope = tf.get_variable_scope()
+        embedding = np.load('embeddings.npy')
 
         self.embedding = tf.get_variable('embeddings',
                                          initializer=embedding.astype(
