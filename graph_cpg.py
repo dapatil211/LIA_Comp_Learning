@@ -38,7 +38,7 @@ class CPG(object):
                 **kwargs):
         # If the requested variable is not trainable, just invoke the wrapped
         # variable getter directly.
-        if not trainable:  #or 'dense' not in name:
+        if not trainable or 'AMSGrad' in name:  #or 'dense' not in name:
             return getter(name=name,
                           shape=shape,
                           dtype=dtype,

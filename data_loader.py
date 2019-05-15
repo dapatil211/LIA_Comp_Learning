@@ -103,7 +103,9 @@ class InputParser(object):
     def parse_string(self, desc_string):
         desc_string = tf.string_strip(desc_string)
         if self.comp:
-            desc_string = tf.string_split(desc_string, ',').values
+            desc_string = tf.string_split(desc_string, ',')
+            desc_string = tf.sparse.to_dense(desc_string, default_value='')
+            desc_string = tf.squeeze(desc_string)
             desc_string = tf.string_split(desc_string)
             desc_string = tf.sparse_tensor_to_dense(
                 self.table.lookup(desc_string), default_value=-1)
