@@ -245,9 +245,10 @@ class BasicParser:
 
 class GloveParser:
 
-    def __init__(self, use_glove=True):
+    def __init__(self, use_glove=True, reduce_sum=True):
 
         self.scope = tf.get_variable_scope()
+        self.reduce_sum = reduce_sum
         if use_glove:
             embedding = np.load('embeddings.npy')
 
@@ -264,7 +265,12 @@ class GloveParser:
         with tf.variable_scope(self.scope):
             embeddings = tf.nn.embedding_lookup(self.embedding, descs)
             # embeddings = tf.Print(embeddings, [tf.shape(embeddings)])
-            embeddings = tf.reduce_sum(embeddings, [0, 1])
+            if self.reduce_sum:
+                embeddings = tf.reduce_sum(embeddings, [0, 1])
+            else:
+                shape = descs.get_shape()
+                embeddings = tf.reshape(
+                    embeddings, [1, shape[0] * 2 * tf.shape(self.embedding)[1]])
             # embeddings = tf.reduce_sum(embeddings, [1, 2])
             # embeddings = self.elmo(descs, signature="default",
             #                        as_dict=True)["default"]

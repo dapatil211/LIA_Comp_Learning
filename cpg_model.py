@@ -417,14 +417,14 @@ def output_comp_model_fn(features, labels, mode, params):
     features, labels = input_parser.parse_to_dict(features, labels)
     images = features['image']
     descs = features['concept']
-    parser = GloveParser(use_glove=params['glove'])
+    parser = GloveParser(use_glove=params['glove'], reduce_sum=False)
 
     # batch_size = descs.get_shape()[0]
     # log_softmax = tf.constant([[]], shape=(batch_size, 0))
     # shape_idx = tf.constant(0, dtype=tf.int32)
 
     def create_single_shape_logits(desc):
-        context = parser.parse_descs([desc])
+        context = parser.parse_descs(tf.expand_dims(desc, 0))
         logits, _ = create_logits(
             images,
             context,
@@ -445,6 +445,7 @@ def output_comp_model_fn(features, labels, mode, params):
                             descs[0],
                             dtype=tf.float32)
     logits = tf.reduce_sum(log_sigmoid, 0)
+    tf.summary.histogram('logits', logits)
     # logits = tf.Print(logits, [tf.shape(logits), tf.shape(log_sigmoid)])
     ce_loss = tf.nn.sigmoid_cross_entropy_with_logits(logits=logits,
                                                       labels=labels)
@@ -456,7 +457,11 @@ def output_comp_model_fn(features, labels, mode, params):
         ],
                            name='l2_loss') * params['l2_weight']
     loss = ce_loss + l2_loss
-    predictions = logits > 0.0
+    predictions = logits > tf.log(.5)
+    predictions = tf.cast(predictions, tf.float32)
+    # predictions = tf.Print(predictions, [predictions, logits, log_sigmoid],
+    #                        summarize=10)
+    tf.summary.histogram('predictions', predictions)
     pairs = tf.reshape(logits, [-1, 2])
     val_preds = tf.argmax(pairs, axis=1, output_type=tf.int64, name='val_preds')
 

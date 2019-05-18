@@ -25,7 +25,7 @@ for comp_dim in 64 #16 32
 do
 for glove in "${glove_vals[@]}"
 do
-for dataset in mini_norandom_0 mini_norandom_1 mini_norandom_2
+for dataset in mini_norandom_0 #mini_norandom_1 mini_norandom_2
 do
 for k in 2 3 5 10
 do
@@ -43,7 +43,7 @@ do
     --l2-weight=$l2_weight --init-lr=$init_lr --lr-decay-method=$decay_method \
     --optimizer=$optimizer --total-steps=$total_steps \
     --s="$3/${full_data}_grid_summaries_$1/$name" --comp-hidden-dimension=$comp_dim\
-    ${glove} --epochs-between-evals 15
+    ${glove} --epochs-between-evals 30
 done
 done
 done
