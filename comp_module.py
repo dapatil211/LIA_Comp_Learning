@@ -129,9 +129,7 @@ class CompositionalParser:
 
                 c1 = self.dense1(c1)
                 c2 = self.dense1(c2)
-                return self.dense2(
-                    tf.nn.selu(tf.reduce_sum(tf.stack([c1, c2], axis=0),
-                                             axis=0)))
+                return self.dense2(tf.nn.selu(c1 + c2))
 
     def apply_fn(self, adj, base):
         with tf.variable_scope(self.scope):
@@ -264,8 +262,9 @@ class GloveParser:
 
     def parse_descs(self, descs, apply=True):
         with tf.variable_scope(self.scope):
-            embeddings = tf.reduce_sum(
-                tf.nn.embedding_lookup(self.embedding, descs), [0, 1])
+            embeddings = tf.nn.embedding_lookup(self.embedding, descs)
+            # embeddings = tf.Print(embeddings, [tf.shape(embeddings)])
+            embeddings = tf.reduce_sum(embeddings, [0, 1])
             # embeddings = tf.reduce_sum(embeddings, [1, 2])
             # embeddings = self.elmo(descs, signature="default",
             #                        as_dict=True)["default"]

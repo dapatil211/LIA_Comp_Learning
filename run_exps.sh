@@ -3,8 +3,8 @@
 
 export CUDA_VISIBLE_DEVICES=$2
 # dataset="and"
-total_steps=50000
-glove_vals=("--glove")
+total_steps=20000
+glove_vals=("")
 
 # for fc_dropout in .1 .3 .5
 for fc_dropout in 0 #.3
@@ -25,8 +25,11 @@ for comp_dim in 64 #16 32
 do
 for glove in "${glove_vals[@]}"
 do
-for dataset in small_conj_2 small_conj_3 small_conj_5 small_conj_10
+for dataset in mini_norandom_0 mini_norandom_1 mini_norandom_2
 do
+for k in 2 3 5 10
+do
+    full_data="${dataset}_conj_${k}"
     case "$glove" in
     "--glove") glove_val="true" ;;
     *) glove_val="false";;
@@ -35,13 +38,13 @@ do
     `"_lr=${init_lr}_wd=${l2_weight}_dm=${decay_method}_optimizer=${optimizer}"`
     `"_comp_dim=${comp_dim}_glove=${glove_val}_5conv"
     echo "Running experiment $name"
-    mkdir -p "${dataset}_grid_summaries_$1/$name"
-    python3 cpg_model.py -f ../shapes/Example/${dataset}/output -m $1 -d small_conj \
+    python3 cpg_model.py -f ../shapes/Example/${full_data}/output -m $1 -d ${full_data} \
     --fc-dropout=$fc_dropout --context-dropout=$context_dropout \
     --l2-weight=$l2_weight --init-lr=$init_lr --lr-decay-method=$decay_method \
     --optimizer=$optimizer --total-steps=$total_steps \
-    --s="$3/${dataset}_grid_summaries_$1/$name" --comp-hidden-dimension=$comp_dim\
+    --s="$3/${full_data}_grid_summaries_$1/$name" --comp-hidden-dimension=$comp_dim\
     ${glove} --epochs-between-evals 15
+done
 done
 done
 done
