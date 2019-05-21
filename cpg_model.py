@@ -358,7 +358,8 @@ def full_model_fn(features, labels, mode, params):
     else:
         parser = CompositionalParser(
             hidden_dimension_size=params['comp_hidden_dimension'],
-            use_glove=params['glove'])
+            use_glove=params['glove'],
+            n_ary_and=params['n_ary_and'])
     features, labels = input_parser.parse_to_dict(features, labels)
 
     images = features['image']
@@ -483,45 +484,6 @@ def output_comp_model_fn(features, labels, mode, params):
         tf.summary.scalar(k, metrics[k][0])
     metric_update_ops = tf.group([metrics[k][1] for k in metrics])
 
-    # log_sigmoid = tf.while_loop(create_single_shape_logits,
-
-    #     cond=lambda image, descs, log_sigmoid: tf.less(
-    #         tf.shape(log_sigmoid)[1],
-    #         tf.shape(descs)[1]),
-    #     body=create_single_shape_logits,
-    #     loop_vars=[images, descs, log_softmax],
-    #     shape_invariants=[
-    #         images.get_shape(),
-    #         descs.get_shape(),
-    #         tf.TensorShape([batch_size, 1]),
-    #         shape_idx.get_shape()
-    #     ], parallel_iterations=1)
-    # logits = tf.reduce_sum(log_softmax[:, :, 0], 1)
-    # logits = tf.stack([logits, tf.log(1.0 - tf.exp(logits))], 1)
-    # softmax = tf.exp(tf.reduce_sum(log_softmax[:, :, 0], 1))
-    # labels = tf.cast(labels, tf.float32)
-    # loss = -1 * (labels * tf.log(softmax) +
-    #              (1.0 - labels) * tf.log(1.0 - softmax))
-    # predictions = softmax > .5
-    # accuracy
-    # if params['baseline']:
-    # else:
-    #     parser = CompositionalParser(
-    #         hidden_dimension_size=params['comp_hidden_dimension'],
-    #         use_glove=params['glove'])
-
-    # contexts = parser.parse_descs(descs[0], params['dataset'] == 'apply')
-    # loss, metrics, metric_update_ops = model_fn(
-    #     images,
-    #     labels,
-    #     contexts,
-    #     mode == tf.estimator.ModeKeys.TRAIN,
-    #     cpg,
-    #     pool_dropout=params['pool_dropout'],
-    #     fc_dropout=params['fc_dropout'],
-    #     context_dropout=params['context_dropout'],
-    #     l2_weight=params['l2_weight'],
-    # )
     learning_rate = get_learning_rate(params['init_lr'],
                                       params['lr_decay_method'],
                                       params['total_steps'],
@@ -542,6 +504,98 @@ def output_comp_model_fn(features, labels, mode, params):
         if g is not None:
             new_grads.append((g, v))
             grad_summaries.append(summaries(g, v.name[:-2] + '_grads'))
+
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    train_op = optimizer.apply_gradients(
+        new_grads, global_step=tf.train.get_or_create_global_step())
+    train_op = tf.group([train_op, update_ops, metric_update_ops])
+    train_op = train_op if mode == tf.estimator.ModeKeys.TRAIN else None
+
+    return tf.estimator.EstimatorSpec(mode=mode,
+                                      loss=tf.reduce_mean(loss),
+                                      train_op=train_op,
+                                      eval_metric_ops=metrics)
+
+
+def non_cpg_baseline_model_fn(features, labels, mode, params):
+    input_parser = InputParser(True)
+    features, labels = input_parser.parse_to_dict(features, labels)
+    images = features['image']
+    descs = features['concept']
+    parser = GloveParser(use_glove=params['glove'],
+                         reduce_sum=True,
+                         use_dense=False)
+    contexts = parser.parse_descs(descs[0])
+    contexts = tf.tile(contexts, [tf.shape(images)[0], 1])
+
+    with tf.variable_scope(
+            'model',
+            use_resource=True,
+    ):
+        conv1 = tf.layers.Conv2D(64,
+                                 3,
+                                 activation=tf.nn.leaky_relu,
+                                 name='conv1',
+                                 padding='SAME')
+        conv2 = tf.layers.Conv2D(64,
+                                 3,
+                                 activation=tf.nn.leaky_relu,
+                                 name='conv2',
+                                 padding='SAME')
+        conv3 = tf.layers.Conv2D(128,
+                                 3,
+                                 activation=tf.nn.leaky_relu,
+                                 name='conv3',
+                                 padding='SAME')
+        conv4 = tf.layers.Conv2D(256,
+                                 3,
+                                 activation=tf.nn.leaky_relu,
+                                 name='conv4',
+                                 padding='SAME')
+        conv5 = tf.layers.Conv2D(256,
+                                 3,
+                                 activation=tf.nn.leaky_relu,
+                                 name='conv5',
+                                 padding='SAME')
+        dense1 = tf.layers.Dense(256, activation=tf.nn.selu, name='dense1')
+        dense2 = tf.layers.Dense(2, name='dense2')
+        x = images
+        x = conv1(x)
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool1')
+        x = conv2(x)
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool2')
+        x = conv3(x)
+        x = tf.layers.max_pooling2d(x, 3, 2, name='pool3')
+        x = conv4(x)
+        x = tf.layers.max_pooling2d(x, 3, 1, name='pool4')
+        x = conv5(x)
+        x = tf.reduce_mean(x, axis=[1, 2], name='global_pool')
+        x = tf.concat([x, contexts], 1)
+        x = dense1(x)
+        logits = dense2(x)
+    loss, metrics, metric_update_ops = construct_loss_and_metrics(
+        labels, logits, params['l2_weight'],
+        mode == tf.estimator.ModeKeys.TRAIN, [])
+    learning_rate = get_learning_rate(params['init_lr'],
+                                      params['lr_decay_method'],
+                                      params['total_steps'],
+                                      tf.train.get_or_create_global_step())
+    optimizer = get_optimizer(params['optimizer'], learning_rate,
+                              **params['optimizer_args'])
+    tf.summary.scalar('learning_rate', learning_rate)
+
+    gradients, variables = zip(*optimizer.compute_gradients(loss))
+    gradients, global_norm = tf.clip_by_global_norm(gradients, 10.0)
+
+    # grads = optimizer.compute_gradients(loss)
+    grads = zip(gradients, variables)
+    grad_summaries = []
+    tf.summary.scalar('gradient_norm', global_norm)
+    new_grads = []
+    for g, v in grads:
+        if g is not None:
+            new_grads.append((g, v))
+            # grad_summaries.append(summaries(g, v.name[:-2] + '_grads'))
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     train_op = optimizer.apply_gradients(
@@ -577,7 +631,13 @@ def train_estimator(folder='data',
         dataset, 'insample_test')] // BATCH_SIZE
     params['baseline'] = name == 'bl'
     params['dataset'] = dataset
-    estimator_model_fn = output_comp_model_fn if name == 'comp_output' else full_model_fn
+    model_fn_dict = {
+        'comp': full_model_fn,
+        'bl': full_model_fn,
+        'comp_output': output_comp_model_fn,
+        'bl_no_cpg': non_cpg_baseline_model_fn,
+    }
+    estimator_model_fn = model_fn_dict[name]
     session_config = tf.ConfigProto()
     session_config.gpu_options.allow_growth = True
     config = tf.estimator.RunConfig(save_summary_steps=100,
@@ -683,7 +743,7 @@ def main():
     parser = argparse.ArgumentParser(description='Compositional Learning')
     parser.add_argument('-m',
                         '--model',
-                        choices=['bl', 'comp', 'comp_output'],
+                        choices=['bl', 'comp', 'comp_output', 'bl_no_cpg'],
                         default='comp')
     parser.add_argument('-f', '--folder', default='data/')
     parser.add_argument('-d', '--dataset', default='apply')
@@ -705,6 +765,7 @@ def main():
         choices=['adam', 'rmsprop', 'momentum', 'adadelta', 'amsgrad'])
     parser.add_argument('--comp-hidden-dimension', default=16, type=int)
     parser.add_argument('--glove', action='store_true')
+    parser.add_argument('--n-ary-and', action='store_true')
 
     args = parser.parse_args()
     params = {
@@ -720,6 +781,7 @@ def main():
         'comp_hidden_dimension': args.comp_hidden_dimension,
         'glove': args.glove,
         'epochs_between_evals': args.epochs_between_evals,
+        'n_ary_and': args.n_ary_and,
     }
 
     train_estimator(args.folder, args.model, args.dataset, args.summary, params)

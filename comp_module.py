@@ -37,7 +37,10 @@ class AndContext:
 
 class CompositionalParser:
 
-    def __init__(self, hidden_dimension_size=16, use_glove=False):
+    def __init__(self,
+                 hidden_dimension_size=16,
+                 use_glove=False,
+                 n_ary_and=True):
         self.scope = tf.get_variable_scope()
         self.shapes = [
             'square', 'rectangle', 'triangle', 'pentagon', 'cross', 'circle',
@@ -47,6 +50,7 @@ class CompositionalParser:
             'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'gray', 'any'
         ]
         self.use_glove = use_glove
+        self.n_ary_and = n_ary_and
         if use_glove:
             embedding = np.load('embeddings.npy')
             self.color_embeddings = tf.get_variable(
@@ -180,13 +184,18 @@ class CompositionalParser:
             ])
         return while_loop_op[2]
 
-    def parse_and(self, desc):
-        desc = tf.reshape(desc, tf.constant([-1, 8]))
-        return tf.while_loop(lambda desc: tf.greater(tf.shape(desc)[0], 1),
-                             body=self.parse_across,
-                             loop_vars=[desc],
-                             shape_invariants=[tf.TensorShape([None, 8])],
-                             parallel_iterations=1)
+    def parse_and(self, descs):
+        descs = tf.reshape(descs, tf.constant([-1, 8]))
+        if self.n_ary_and:
+            descs = self.dense1(descs)
+            descs = tf.reduce_sum(descs, 0)
+            return self.dense2(tf.expand_dims(descs, 0))
+        else:
+            return tf.while_loop(lambda desc: tf.greater(tf.shape(desc)[0], 1),
+                                 body=self.parse_across,
+                                 loop_vars=[descs],
+                                 shape_invariants=[tf.TensorShape([None, 8])],
+                                 parallel_iterations=1)
 
         # if tf.shape(desc)[0] > 1:
         #     return AndContext(self.parse_and(desc[:tf.shape(desc)[0] // 2, :]),
@@ -245,7 +254,11 @@ class BasicParser:
 
 class GloveParser:
 
-    def __init__(self, use_glove=True, reduce_sum=True):
+    def __init__(self,
+                 use_glove=True,
+                 reduce_sum=True,
+                 output_size=8,
+                 use_dense=True):
 
         self.scope = tf.get_variable_scope()
         self.reduce_sum = reduce_sum
@@ -259,7 +272,10 @@ class GloveParser:
         else:
             self.embedding = tf.get_variable(
                 'embeddings', [15, 8], initializer=tf.random_normal_initializer)
-        self.dense1 = tf.layers.Dense(8, name='glove_dense')
+        if use_dense:
+            self.dense1 = tf.layers.Dense(output_size, name='glove_dense')
+        else:
+            self.dense1 = None
 
     def parse_descs(self, descs, apply=True):
         with tf.variable_scope(self.scope):
@@ -275,5 +291,5 @@ class GloveParser:
             # embeddings = self.elmo(descs, signature="default",
             #                        as_dict=True)["default"]
             x = tf.reshape(embeddings, [1, -1])
-            x = self.dense1(x)
+            x = self.dense1(x) if self.dense1 is not None else x
             return x
